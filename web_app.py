@@ -38,19 +38,49 @@ HTML_TEMPLATE = """
     </div>
 
     <script>
-        const evtSource = new EventSource("/stream");
-        evtSource.onmessage = function(e) {
-            if (e.data === "reload") {
-                fetch('/partial')
-                    .then(res => res.text())
-                    .then(html => {
-                        document.getElementById('dashboard-content').innerHTML = html;
-                    });
-            }
-        };
+        let evtSource;
 
-        // Event delegation to cleanly capture button clicks without inline string escaping issues
+        function connectSSE() {
+            evtSource = new EventSource("/stream");
+
+            evtSource.onmessage = function(e) {
+                if (e.data === "reload") {
+                    fetch('/partial')
+                        .then(res => res.text())
+                        .then(html => {
+                            document.getElementById('dashboard-content').innerHTML = html;
+                            document.getElementById('status-badge').textContent = "Live Sync Active";
+                            document.getElementById('status-badge').className = "badge bg-outline-light border text-success";
+                        });
+                }
+            };
+
+            evtSource.onerror = function() {
+                // Update status indicator when connection drops
+                document.getElementById('status-badge').textContent = "Sync Reconnecting...";
+                document.getElementById('status-badge').className = "badge bg-outline-light border text-warning";
+                
+                evtSource.close();
+                // Retry connection after 3 seconds
+                setTimeout(connectSSE, 3000);
+            };
+        }
+
+        connectSSE();
+
+        // Event delegation to capture task completions and shifts
         document.addEventListener('click', function(e) {
+            const shiftBtn = e.target.closest('.btn-shift-task');
+            if (shiftBtn) {
+                const rawLine = shiftBtn.getAttribute('data-raw');
+                fetch('/shift_task', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ raw_line: rawLine })
+                });
+                return;
+            }
+
             const subtaskBtn = e.target.closest('.btn-complete-subtask');
             if (subtaskBtn) {
                 const parentTitle = subtaskBtn.getAttribute('data-parent');
@@ -74,18 +104,7 @@ HTML_TEMPLATE = """
                 return;
             }
         });
-        document.addEventListener('click', function(e) {
-            const shiftBtn = e.target.closest('.btn-shift-task');
-            if (shiftBtn) {
-                const rawLine = shiftBtn.getAttribute('data-raw');
-                fetch('/shift_task', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ raw_line: rawLine })
-                });
-                return;
-            }
-    </script>
+</script>
 </body>
 </html>
 """
@@ -341,6 +360,9 @@ def stream():
                 if mtime > last_mtime:
                     last_mtime = mtime
                     yield "data: reload\n\n"
+            
+            # Send periodic keep-alive comment every 15s to keep connection open
+            yield ": keep-alive\n\n"
             time.sleep(0.5)
 
     return Response(event_stream(), mimetype="text/event-stream")

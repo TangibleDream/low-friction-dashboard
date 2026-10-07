@@ -157,6 +157,9 @@ PARTIAL_TEMPLATE = """
                                         <li class="d-flex align-items-center justify-content-between mb-1">
                                             <span><span class="text-secondary">↳</span> {{ sub }}</span>
                                             <button 
+            data-raw="{{ t.raw|forceescape }}" 
+            class="btn btn-outline-warning btn-shift-task">Tomorrow</button>
+                                            <button 
                                                 data-parent="{{ t.title|forceescape }}" 
                                                 data-subtask="{{ sub|forceescape }}" 
                                                 class="btn btn-outline-success btn-complete btn-complete-subtask ms-2">✓ Done</button>
@@ -171,9 +174,14 @@ PARTIAL_TEMPLATE = """
                             {% endfor %}
                         </td>
                         <td class="align-top text-end">
-                            <button 
-                                data-raw="{{ t.raw|forceescape }}" 
-                                class="btn btn-sm btn-outline-success btn-complete-task">Done</button>
+                            <div class="btn-group btn-group-sm">
+                             <button 
+                                    data-raw="{{ t.raw|forceescape }}" 
+                                    class="btn btn-outline-warning btn-shift-task">Tomorrow</button>
+                                <button 
+                                    data-raw="{{ t.raw|forceescape }}" 
+                                    class="btn btn-sm btn-outline-success btn-complete-task">Done</button>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}

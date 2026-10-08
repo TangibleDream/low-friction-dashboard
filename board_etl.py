@@ -121,7 +121,11 @@ def parse_tasks(file_path: str):
             else:
                 today_tasks.append(current_task)
 
+    # Sort future tasks chronologically
     future_tasks.sort(key=lambda t: t['parsed_date'] or datetime.max)
+
+    # Sort today's tasks so #priority items appear first
+    today_tasks.sort(key=lambda t: 0 if 'priority' in t['tags'] else 1)
 
     return {
         "today": today_tasks,

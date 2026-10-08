@@ -2,7 +2,7 @@ import re
 import time
 from pathlib import Path
 from flask import Flask, render_template_string, Response, request, jsonify
-from board_etl import parse_tasks, shift_line_to_tomorrow
+from board_etl import parse_tasks, shift_line_to_tomorrow, make_line_today
 
 app = Flask(__name__)
 TASK_FILE = Path("tasks.txt")
@@ -97,6 +97,17 @@ HTML_TEMPLATE = """
             if (taskBtn) {
                 const rawLine = taskBtn.getAttribute('data-raw');
                 fetch('/complete_task', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ raw_line: rawLine })
+                });
+                return;
+            }
+
+            const makeTodayBtn = e.target.closest('.btn-make-today');
+            if (makeTodayBtn) {
+                const rawLine = makeTodayBtn.getAttribute('data-raw');
+                fetch('/make_today', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ raw_line: rawLine })
@@ -206,6 +217,7 @@ PARTIAL_TEMPLATE = """
         </button>
     </div>
     <div class="card-body p-0">
+        <!-- Initial 3 Preview Items -->
         <ul class="list-group list-group-flush border-bottom border-secondary">
             {% for t in data.future[:3] %}
                 <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center">
@@ -214,11 +226,14 @@ PARTIAL_TEMPLATE = """
                         <span class="fw-semibold">{{ t.title }}</span>
                         {% if t.contexts %}<span class="badge bg-secondary ms-2">@{{ t.contexts[0] }}</span>{% endif %}
                     </div>
-                    <span class="text-muted small">Upcoming</span>
+                    <button 
+                        data-raw="{{ t.raw|forceescape }}" 
+                        class="btn btn-sm btn-outline-info btn-make-today">📌 Today</button>
                 </li>
             {% endfor %}
         </ul>
         
+        <!-- Expanded Remaining Items -->
         {% if data.future|length > 3 %}
         <div class="collapse" id="futureCollapse">
             <ul class="list-group list-group-flush">
@@ -227,8 +242,11 @@ PARTIAL_TEMPLATE = """
                         <div>
                             <span class="badge bg-secondary me-2">{{ t.time }}</span>
                             <span>{{ t.title }}</span>
+                            {% if t.contexts %}<span class="badge bg-secondary ms-2">@{{ t.contexts[0] }}</span>{% endif %}
                         </div>
-                        <span class="text-muted small">Future</span>
+                        <button 
+                            data-raw="{{ t.raw|forceescape }}" 
+                            class="btn btn-sm btn-outline-info btn-make-today">📌 Today</button>
                     </li>
                 {% endfor %}
             </ul>
@@ -456,6 +474,26 @@ def complete_task():
             new_lines.append(f"x {clean_item}")
         TASK_FILE.write_text("\n".join(new_lines) + "\n")
 
+    return jsonify({"status": "ok"})
+
+@app.route("/make_today", methods=["POST"])
+def make_today():
+    req_data = request.get_json()
+    raw_line = req_data.get("raw_line")
+
+    if not raw_line or not TASK_FILE.exists():
+        return jsonify({"status": "error"}), 400
+
+    lines = TASK_FILE.read_text().splitlines()
+    new_lines = []
+
+    for line in lines:
+        if line.strip() == raw_line.strip():
+            new_lines.append(make_line_today(line))
+        else:
+            new_lines.append(line)
+
+    TASK_FILE.write_text("\n".join(new_lines) + "\n")
     return jsonify({"status": "ok"})
 
 if __name__ == "__main__":

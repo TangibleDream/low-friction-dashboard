@@ -235,6 +235,24 @@ def shift_line_to_tomorrow(raw_line: str) -> str:
     tomorrow_str = f"{tomorrow_date.month}/{tomorrow_date.day}"
     return f"{raw_line.strip()} {tomorrow_str}"
 
+def make_line_today(raw_line: str) -> str:
+    """
+    Replaces existing explicit M/D date shorthands with today's M/D date,
+    or appends today's M/D date if no date exists.
+    """
+    now = datetime.now()
+    today_str = f"{now.month}/{now.day}"
+    
+    # Match existing standalone M/D date (e.g., "10/12")
+    date_match = re.search(r'(?<!\d:)\b(\d{1,2}/\d{1,2})\b(?!\:\d{2})', raw_line)
+    
+    if date_match:
+        # Replace the existing future date with today's date
+        return raw_line[:date_match.start(1)] + today_str + raw_line[date_match.end(1):]
+        
+    # If no date is present, append today's M/D
+    return f"{raw_line.strip()} {today_str}"
+
 if __name__ == "__main__":
     data = parse_tasks("tasks.txt")
     if data["today"] or data["future"]:

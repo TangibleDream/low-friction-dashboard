@@ -125,7 +125,14 @@ PARTIAL_TEMPLATE = """
 <div class="card mb-4 shadow-sm">
     <div class="card-header fw-bold text-uppercase text-secondary fs-6 d-flex justify-content-between align-items-center">
         <span>Today's Schedule Structure</span>
-        <span class="badge bg-secondary">{{ data.today|length }} Tasks Remaining</span>
+        <div>
+            <span class="badge bg-secondary me-2">{{ data.today|length }} Tasks Total</span>
+            {% if data.today|length > 10 %}
+            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#todayCollapse">
+                Toggle All {{ data.today|length }} Tasks
+            </button>
+            {% endif %}
+        </div>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -137,11 +144,12 @@ PARTIAL_TEMPLATE = """
                         <th style="width: 12%">Context</th>
                         <th>Task Description</th>
                         <th>Tags</th>
-                        <th style="width: 8%" class="text-end">Action</th>
+                        <th style="width: 12%" class="text-end">Action</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for t in data.today %}
+                    <!-- First 10 Tasks (Always Visible) -->
+                    {% for t in data.today[:10] %}
                     <tr>
                         <td class="align-top">
                             {% if t.symbol == '!' %}
@@ -158,7 +166,7 @@ PARTIAL_TEMPLATE = """
                                 <span class="badge bg-secondary">@{{ t.contexts[0] }}</span>
                             {% endif %}
                         </td>
-                                                <td>
+                        <td>
                             <div class="{% if t.symbol == '?' %}text-muted fst-italic{% else %}fw-semibold{% endif %}">
                                 {{ t.title }}
                             </div>
@@ -167,9 +175,6 @@ PARTIAL_TEMPLATE = """
                                     {% for sub in t.subtasks %}
                                         <li class="d-flex align-items-center justify-content-between mb-1">
                                             <span><span class="text-secondary">↳</span> {{ sub }}</span>
-                                            <button 
-            data-raw="{{ t.raw|forceescape }}" 
-            class="btn btn-outline-warning btn-shift-task">Tomorrow</button>
                                             <button 
                                                 data-parent="{{ t.title|forceescape }}" 
                                                 data-subtask="{{ sub|forceescape }}" 
@@ -186,23 +191,90 @@ PARTIAL_TEMPLATE = """
                         </td>
                         <td class="align-top text-end">
                             <div class="btn-group btn-group-sm">
-                             <button 
-                                    data-raw="{{ t.raw|forceescape }}" 
-                                    class="btn btn-outline-warning btn-shift-task">Tomorrow</button>
                                 <button 
                                     data-raw="{{ t.raw|forceescape }}" 
-                                    class="btn btn-sm btn-outline-success btn-complete-task">Done</button>
+                                    class="btn btn-outline-warning btn-shift-task">➡️ Tomorrow</button>
+                                <button 
+                                    data-raw="{{ t.raw|forceescape }}" 
+                                    class="btn btn-outline-success btn-complete-task">✓ Done</button>
                             </div>
                         </td>
                     </tr>
                     {% endfor %}
-                    {% if not data.today %}
+                </tbody>
+            </table>
+
+            <!-- Overflow Tasks (Collapsed if > 10) -->
+            {% if data.today|length > 10 %}
+            <div class="collapse" id="todayCollapse">
+                <table class="table table-dark table-hover m-0 align-middle border-top border-secondary">
+                    <tbody>
+                        {% for t in data.today[10:] %}
+                        <tr>
+                            <td style="width: 12%" class="align-top">
+                                {% if t.symbol == '!' %}
+                                    <span class="badge badge-strong">STRONG</span>
+                                {% elif t.symbol == '?' %}
+                                    <span class="badge badge-arbitrary">ARBITRARY</span>
+                                {% else %}
+                                    <span class="badge badge-fluid">FLUID</span>
+                                {% endif %}
+                            </td>
+                            <td style="width: 18%" class="text-info fw-semibold align-top">{{ t.time or 'Flexible' }}</td>
+                            <td style="width: 12%" class="align-top">
+                                {% if t.contexts %}
+                                    <span class="badge bg-secondary">@{{ t.contexts[0] }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="{% if t.symbol == '?' %}text-muted fst-italic{% else %}fw-semibold{% endif %}">
+                                    {{ t.title }}
+                                </div>
+                                {% if t.subtasks %}
+                                    <ul class="list-unstyled ms-3 mt-2 mb-0 text-muted small">
+                                        {% for sub in t.subtasks %}
+                                            <li class="d-flex align-items-center justify-content-between mb-1">
+                                                <span><span class="text-secondary">↳</span> {{ sub }}</span>
+                                                <button 
+                                                    data-parent="{{ t.title|forceescape }}" 
+                                                    data-subtask="{{ sub|forceescape }}" 
+                                                    class="btn btn-outline-success btn-complete btn-complete-subtask ms-2">✓ Done</button>
+                                            </li>
+                                        {% endfor %}
+                                    </ul>
+                                {% endif %}
+                            </td>
+                            <td class="align-top">
+                                {% for tag in t.tags %}
+                                    <span class="badge bg-dark border border-secondary text-light">#{{ tag }}</span>
+                                {% endfor %}
+                            </td>
+                            <td style="width: 12%" class="align-top text-end">
+                                <div class="btn-group btn-group-sm">
+                                    <button 
+                                        data-raw="{{ t.raw|forceescape }}" 
+                                        class="btn btn-outline-warning btn-shift-task">➡️ Tomorrow</button>
+                                    <button 
+                                        data-raw="{{ t.raw|forceescape }}" 
+                                        class="btn btn-outline-success btn-complete-task">✓ Done</button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+
+            {% if not data.today %}
+            <table class="table table-dark m-0">
+                <tbody>
                     <tr>
                         <td colspan="6" class="text-center text-muted py-3 fst-italic">No active tasks scheduled for today!</td>
                     </tr>
-                    {% endif %}
                 </tbody>
             </table>
+            {% endif %}
         </div>
     </div>
 </div>

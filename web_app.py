@@ -3,6 +3,7 @@ import time
 from pathlib import Path
 from flask import Flask, render_template_string, Response, request, jsonify
 from board_etl import parse_tasks, shift_line_to_tomorrow, make_line_today, toggle_line_focus
+from datetime import datetime
 
 app = Flask(__name__)
 TASK_FILE = Path("tasks.txt")
@@ -437,6 +438,23 @@ PARTIAL_TEMPLATE = """
 {% endif %}
 """
 
+# Helpers
+
+def insert_date_at_front(raw_line: str, date_str: str) -> str:
+    """
+    Inserts date_str right after the task symbol (!, *, ?), or at the beginning 
+    if no symbol is present.
+    Example: "* Dry Whites" -> "* 10/9 Dry Whites"
+    """
+    stripped = raw_line.strip()
+    if stripped and stripped[0] in "!*?":
+        symbol = stripped[0]
+        content = stripped[1:].strip()
+        return f"{symbol} {date_str} {content}"
+    return f"{date_str} {stripped}"
+
+# Endpoints
+
 @app.route("/")
 def index():
     data = parse_tasks(str(TASK_FILE))
@@ -533,9 +551,18 @@ def complete_subtask():
 
         new_lines.append(line)
 
+    # If no remaining subtasks, auto-complete parent task
     if parent_line_idx is not None and remaining_subtasks_count == 0:
         parent_raw = lines[parent_line_idx].strip()
         final_lines = [l for l in new_lines if l.strip() != parent_raw]
+        
+        date_match = re.search(r'(?<!\d:)\b(\d{1,2}/\d{1,2})\b(?!\:\d{2})', parent_raw)
+        now = datetime.now()
+        today_str = f"{now.month}/{now.day}"
+        
+        if not date_match:
+            parent_raw = insert_date_at_front(parent_raw, today_str)
+
         if "# Done" not in final_lines:
             final_lines.append("\n# Done")
         final_lines.append(f"x {parent_raw}")
@@ -558,10 +585,20 @@ def complete_task():
     completed_block = []
     removing = False
 
+    now = datetime.now()
+    today_str = f"{now.month}/{now.day}"
+
     for line in lines:
         if line.strip() == raw_line.strip():
             removing = True
-            completed_block.append(line.strip())
+            
+            # Check if line already has an explicit M/D date
+            date_match = re.search(r'(?<!\d:)\b(\d{1,2}/\d{1,2})\b(?!\:\d{2})', line)
+            if not date_match:
+                # Insert today's date at the front after symbol
+                completed_block.append(insert_date_at_front(line, today_str))
+            else:
+                completed_block.append(line.strip())
             continue
         
         if removing and (line.startswith(" ") or line.startswith("\t")):

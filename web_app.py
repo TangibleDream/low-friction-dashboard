@@ -2,7 +2,7 @@ import re
 import time
 from pathlib import Path
 from flask import Flask, render_template_string, Response, request, jsonify
-from board_etl import parse_tasks, shift_line_to_tomorrow, make_line_today
+from board_etl import parse_tasks, shift_line_to_tomorrow, make_line_today, toggle_line_focus
 
 app = Flask(__name__)
 TASK_FILE = Path("tasks.txt")
@@ -70,49 +70,65 @@ HTML_TEMPLATE = """
 
         // Event delegation to capture task completions and shifts
         document.addEventListener('click', function(e) {
-            const shiftBtn = e.target.closest('.btn-shift-task');
-            if (shiftBtn) {
-                const rawLine = shiftBtn.getAttribute('data-raw');
-                fetch('/shift_task', {
+            // 1. If any specific action button was clicked, let its handler execute and ignore row-focusing
+            if (e.target.closest('button')) {
+                const shiftBtn = e.target.closest('.btn-shift-task');
+                if (shiftBtn) {
+                    const rawLine = shiftBtn.getAttribute('data-raw');
+                    fetch('/shift_task', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ raw_line: rawLine })
+                    });
+                    return;
+                }
+
+                const subtaskBtn = e.target.closest('.btn-complete-subtask');
+                if (subtaskBtn) {
+                    const parentTitle = subtaskBtn.getAttribute('data-parent');
+                    const subtaskText = subtaskBtn.getAttribute('data-subtask');
+                    fetch('/complete_subtask', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ parent_title: parentTitle, subtask: subtaskText })
+                    });
+                    return;
+                }
+
+                const taskBtn = e.target.closest('.btn-complete-task');
+                if (taskBtn) {
+                    const rawLine = taskBtn.getAttribute('data-raw');
+                    fetch('/complete_task', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ raw_line: rawLine })
+                    });
+                    return;
+                }
+
+                const makeTodayBtn = e.target.closest('.btn-make-today');
+                if (makeTodayBtn) {
+                    const rawLine = makeTodayBtn.getAttribute('data-raw');
+                    fetch('/make_today', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ raw_line: rawLine })
+                    });
+                    return;
+                }
+
+                return; // Exit early if it was another button (e.g. collapse toggle)
+            }
+
+            // 2. Otherwise, if any part of the task row was clicked, toggle focus for that task
+            const taskRow = e.target.closest('.task-row');
+            if (taskRow) {
+                const rawLine = taskRow.getAttribute('data-raw');
+                fetch('/toggle_focus', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ raw_line: rawLine })
                 });
-                return;
-            }
-
-            const subtaskBtn = e.target.closest('.btn-complete-subtask');
-            if (subtaskBtn) {
-                const parentTitle = subtaskBtn.getAttribute('data-parent');
-                const subtaskText = subtaskBtn.getAttribute('data-subtask');
-                fetch('/complete_subtask', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ parent_title: parentTitle, subtask: subtaskText })
-                });
-                return;
-            }
-
-            const taskBtn = e.target.closest('.btn-complete-task');
-            if (taskBtn) {
-                const rawLine = taskBtn.getAttribute('data-raw');
-                fetch('/complete_task', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ raw_line: rawLine })
-                });
-                return;
-            }
-
-            const makeTodayBtn = e.target.closest('.btn-make-today');
-            if (makeTodayBtn) {
-                const rawLine = makeTodayBtn.getAttribute('data-raw');
-                fetch('/make_today', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ raw_line: rawLine })
-                });
-                return;
             }
         });
 </script>
@@ -150,56 +166,63 @@ PARTIAL_TEMPLATE = """
                 <tbody>
                     <!-- First 10 Tasks (Always Visible) -->
                     {% for t in data.today[:10] %}
-                    <tr>
-                        <td class="align-top">
-                            {% if t.symbol == '!' %}
-                                <span class="badge badge-strong">STRONG</span>
-                            {% elif t.symbol == '?' %}
-                                <span class="badge badge-arbitrary">ARBITRARY</span>
-                            {% else %}
-                                <span class="badge badge-fluid">FLUID</span>
-                            {% endif %}
-                        </td>
-                        <td class="text-info fw-semibold align-top">{{ t.time or 'Flexible' }}</td>
-                        <td class="align-top">
-                            {% if t.contexts %}
-                                <span class="badge bg-secondary">@{{ t.contexts[0] }}</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            <div class="{% if t.symbol == '?' %}text-muted fst-italic{% else %}fw-semibold{% endif %}">
-                                {{ t.title }}
-                            </div>
-                            {% if t.subtasks %}
-                                <ul class="list-unstyled ms-3 mt-2 mb-0 text-muted small">
-                                    {% for sub in t.subtasks %}
-                                        <li class="d-flex align-items-center justify-content-between mb-1">
-                                            <span><span class="text-secondary">↳</span> {{ sub }}</span>
-                                            <button 
-                                                data-parent="{{ t.title|forceescape }}" 
-                                                data-subtask="{{ sub|forceescape }}" 
-                                                class="btn btn-outline-success btn-complete btn-complete-subtask ms-2">✓ Done</button>
-                                        </li>
-                                    {% endfor %}
-                                </ul>
-                            {% endif %}
-                        </td>
-                        <td class="align-top">
-                            {% for tag in t.tags %}
-                                <span class="badge bg-dark border border-secondary text-light">#{{ tag }}</span>
-                            {% endfor %}
-                        </td>
-                        <td class="align-top text-end">
-                            <div class="btn-group btn-group-sm">
-                                <button 
-                                    data-raw="{{ t.raw|forceescape }}" 
-                                    class="btn btn-outline-warning btn-shift-task">➡️ Tomorrow</button>
-                                <button 
-                                    data-raw="{{ t.raw|forceescape }}" 
-                                    class="btn btn-outline-success btn-complete-task">✓ Done</button>
-                            </div>
-                        </td>
-                    </tr>
+                        <!-- Table Row for t in data.today -->
+                        <tr class="task-row {% if 'focus' in t.tags %}table-primary text-light fw-bold border-start border-4 border-info{% endif %}"
+                            data-raw="{{ t.raw|forceescape }}"
+                            style="cursor: pointer;">
+                            <td class="align-top">
+                                {% if 'focus' in t.tags %}
+                                    <span class="badge bg-info text-dark">🎯 IN FOCUS</span>
+                                {% elif t.symbol == '!' %}
+                                    <span class="badge badge-strong">STRONG</span>
+                                {% elif t.symbol == '?' %}
+                                    <span class="badge badge-arbitrary">ARBITRARY</span>
+                                {% else %}
+                                    <span class="badge badge-fluid">FLUID</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-info fw-semibold align-top">{{ t.time or 'Flexible' }}</td>
+                            <td class="align-top">
+                                {% if t.contexts %}
+                                    <span class="badge bg-secondary">@{{ t.contexts[0] }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="{% if t.symbol == '?' %}text-muted fst-italic{% else %}fw-semibold{% endif %}">
+                                    {{ t.title }}
+                                </div>
+                                {% if t.subtasks %}
+                                    <ul class="list-unstyled ms-3 mt-2 mb-0 text-muted small">
+                                        {% for sub in t.subtasks %}
+                                            <li class="d-flex align-items-center justify-content-between mb-1">
+                                                <span><span class="text-secondary">↳</span> {{ sub }}</span>
+                                                <button 
+                                                    data-parent="{{ t.title|forceescape }}" 
+                                                    data-subtask="{{ sub|forceescape }}" 
+                                                    class="btn btn-outline-success btn-complete btn-complete-subtask ms-2">✓ Done</button>
+                                            </li>
+                                        {% endfor %}
+                                    </ul>
+                                {% endif %}
+                            </td>
+                            <td class="align-top">
+                                {% for tag in t.tags %}
+                                    {% if tag != 'focus' %}
+                                        <span class="badge bg-dark border border-secondary text-light">#{{ tag }}</span>
+                                    {% endif %}
+                                {% endfor %}
+                            </td>
+                            <td class="align-top text-end">
+                                <div class="btn-group btn-group-sm">
+                                    <button 
+                                        data-raw="{{ t.raw|forceescape }}" 
+                                        class="btn {% if 'focus' in t.tags %}btn-dark text-warning border-warning{% else %}btn-outline-warning{% endif %} btn-shift-task">➡️ Tomorrow</button>
+                                    <button 
+                                        data-raw="{{ t.raw|forceescape }}" 
+                                        class="btn {% if 'focus' in t.tags %}btn-dark text-success border-success{% else %}btn-outline-success{% endif %} btn-complete-task">✓ Done</button>
+                                </div>
+                            </td>
+                        </tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -464,6 +487,17 @@ def stream():
             time.sleep(0.5)
 
     return Response(event_stream(), mimetype="text/event-stream")
+
+@app.route("/toggle_focus", methods=["POST"])
+def toggle_focus():
+    req_data = request.get_json()
+    raw_line = req_data.get("raw_line")
+
+    if not raw_line or not TASK_FILE.exists():
+        return jsonify({"status": "error"}), 400
+
+    toggle_line_focus(str(TASK_FILE), raw_line)
+    return jsonify({"status": "ok"})
 
 @app.route("/complete_subtask", methods=["POST"])
 def complete_subtask():

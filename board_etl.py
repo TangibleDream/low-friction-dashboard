@@ -257,6 +257,37 @@ def make_line_today(raw_line: str) -> str:
     # If no date is present, append today's M/D
     return f"{raw_line.strip()} {today_str}"
 
+def toggle_line_focus(file_path: str, raw_line: str) -> None:
+    """
+    Toggles the #focus tag on raw_line.
+    Ensures only one task across the file carries the #focus tag at a time.
+    """
+    path = Path(file_path)
+    if not path.exists():
+        return
+
+    lines = path.read_text().splitlines()
+    new_lines = []
+    target_clean = raw_line.strip()
+    is_currently_focused = '#focus' in target_clean
+
+    for line in lines:
+        stripped = line.strip()
+        # Always clear existing #focus tags from all lines
+        cleared_line = re.sub(r'\s*#focus\b', '', line)
+
+        if stripped == target_clean:
+            if not is_currently_focused:
+                # Add #focus tag to target task
+                new_lines.append(f"{cleared_line.rstrip()} #focus")
+            else:
+                # Task was already focused; leave it cleared (unfocused)
+                new_lines.append(cleared_line)
+        else:
+            new_lines.append(cleared_line)
+
+    path.write_text("\n".join(new_lines) + "\n")
+    
 if __name__ == "__main__":
     data = parse_tasks("tasks.txt")
     if data["today"] or data["future"]:

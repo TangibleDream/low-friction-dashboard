@@ -193,14 +193,17 @@ PARTIAL_TEMPLATE = """
                                     {{ t.title }}
                                 </div>
                                 {% if t.subtasks %}
-                                    <ul class="list-unstyled ms-3 mt-2 mb-0 text-muted small">
+                                    <ul class="list-unstyled ms-3 mt-2 mb-0 small">
                                         {% for sub in t.subtasks %}
                                             <li class="d-flex align-items-center justify-content-between mb-1">
-                                                <span><span class="text-secondary">↳</span> {{ sub }}</span>
+                                                <span>
+                                                    <span class="{% if 'focus' in t.tags %}text-dark{% else %}text-secondary{% endif %}">↳</span> 
+                                                    <span class="{% if 'focus' in t.tags %}text-dark{% else %}text-muted{% endif %}">{{ sub }}</span>
+                                                </span>
                                                 <button 
                                                     data-parent="{{ t.title|forceescape }}" 
                                                     data-subtask="{{ sub|forceescape }}" 
-                                                    class="btn btn-outline-success btn-complete btn-complete-subtask ms-2">✓ Done</button>
+                                                    class="btn {% if 'focus' in t.tags %}btn-dark text-success border-success{% else %}btn-outline-success{% endif %} btn-complete btn-complete-subtask ms-2">✓ Done</button>
                                             </li>
                                         {% endfor %}
                                     </ul>
@@ -255,14 +258,17 @@ PARTIAL_TEMPLATE = """
                                     {{ t.title }}
                                 </div>
                                 {% if t.subtasks %}
-                                    <ul class="list-unstyled ms-3 mt-2 mb-0 text-muted small">
+                                    <ul class="list-unstyled ms-3 mt-2 mb-0 small">
                                         {% for sub in t.subtasks %}
                                             <li class="d-flex align-items-center justify-content-between mb-1">
-                                                <span><span class="text-secondary">↳</span> {{ sub }}</span>
+                                                <span>
+                                                    <span class="{% if 'focus' in t.tags %}text-dark{% else %}text-secondary{% endif %}">↳</span> 
+                                                    <span class="{% if 'focus' in t.tags %}text-dark{% else %}text-muted{% endif %}">{{ sub }}</span>
+                                                </span>
                                                 <button 
                                                     data-parent="{{ t.title|forceescape }}" 
                                                     data-subtask="{{ sub|forceescape }}" 
-                                                    class="btn btn-outline-success btn-complete btn-complete-subtask ms-2">✓ Done</button>
+                                                    class="btn {% if 'focus' in t.tags %}btn-dark text-success border-success{% else %}btn-outline-success{% endif %} btn-complete btn-complete-subtask ms-2">✓ Done</button>
                                             </li>
                                         {% endfor %}
                                     </ul>

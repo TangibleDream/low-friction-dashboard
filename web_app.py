@@ -237,9 +237,13 @@ PARTIAL_TEMPLATE = """
                 <table class="table table-dark table-hover m-0 align-middle border-top border-secondary">
                     <tbody>
                         {% for t in data.today[10:] %}
-                        <tr>
+                        <tr class="task-row {% if 'focus' in t.tags %}table-primary text-light fw-bold border-start border-4 border-info{% endif %}"
+                            data-raw="{{ t.raw|forceescape }}"
+                            style="cursor: pointer;">
                             <td style="width: 12%" class="align-top">
-                                {% if t.symbol == '!' %}
+                                {% if 'focus' in t.tags %}
+                                    <span class="badge bg-info text-dark">🎯 IN FOCUS</span>
+                                {% elif t.symbol == '!' %}
                                     <span class="badge badge-strong">STRONG</span>
                                 {% elif t.symbol == '?' %}
                                     <span class="badge badge-arbitrary">ARBITRARY</span>
@@ -276,17 +280,19 @@ PARTIAL_TEMPLATE = """
                             </td>
                             <td class="align-top">
                                 {% for tag in t.tags %}
-                                    <span class="badge bg-dark border border-secondary text-light">#{{ tag }}</span>
+                                    {% if tag != 'focus' %}
+                                        <span class="badge bg-dark border border-secondary text-light">#{{ tag }}</span>
+                                    {% endif %}
                                 {% endfor %}
                             </td>
                             <td style="width: 12%" class="align-top text-end">
                                 <div class="btn-group btn-group-sm">
                                     <button 
                                         data-raw="{{ t.raw|forceescape }}" 
-                                        class="btn btn-outline-warning btn-shift-task">➡️ Tomorrow</button>
+                                        class="btn {% if 'focus' in t.tags %}btn-dark text-warning border-warning{% else %}btn-outline-warning{% endif %} btn-shift-task">➡️ Tomorrow</button>
                                     <button 
                                         data-raw="{{ t.raw|forceescape }}" 
-                                        class="btn btn-outline-success btn-complete-task">✓ Done</button>
+                                        class="btn {% if 'focus' in t.tags %}btn-dark text-success border-success{% else %}btn-outline-success{% endif %} btn-complete-task">✓ Done</button>
                                 </div>
                             </td>
                         </tr>

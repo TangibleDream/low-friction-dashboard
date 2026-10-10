@@ -124,8 +124,18 @@ def parse_tasks(file_path: str):
     # Sort future tasks chronologically
     future_tasks.sort(key=lambda t: t['parsed_date'] or datetime.max)
 
-    # Sort today's tasks so #priority items appear first
-    today_tasks.sort(key=lambda t: 0 if 'priority' in t['tags'] else 1)
+    # Sorting Hierarchy for Today's Tasks:
+    # 0 -> #priority tasks (highest precedence)
+    # 1 -> #focus task (floats right below priority items)
+    # 2 -> Standard tasks
+    def get_task_sort_key(t):
+        if 'priority' in t['tags']:
+            return 0
+        if 'focus' in t['tags']:
+            return 1
+        return 2
+
+    today_tasks.sort(key=get_task_sort_key)
 
     return {
         "today": today_tasks,

@@ -27,7 +27,12 @@ def parse_date(content_str):
             return datetime(target_year, month, day)
         except ValueError:
             return None
-    return None
+    return {
+        "today": today_tasks,
+        "future": future_tasks,
+        "completed": completed_tasks,
+        "all_tags": get_historical_tags(file_path)
+    }
 
 def parse_tasks(file_path: str):
     today_tasks = []
@@ -128,6 +133,20 @@ def parse_tasks(file_path: str):
     # 0 -> #priority tasks (highest precedence)
     # 1 -> #focus task (floats right below priority items)
     # 2 -> Standard tasks
+    def get_historical_tags(file_path: str) -> list[str]:
+        """Extracts all unique tags used across tasks.txt for auto-complete suggestions."""
+        path = Path(file_path)
+        if not path.exists():
+            return []
+        
+        content = path.read_text()
+        # Find all hashtag instances (excluding hex colors if any)
+        tags = set(re.findall(r'#([a-zA-Z0-9_\-]+)', content))
+        # Exclude internal control tags if desired
+        tags.discard('focus')
+        tags.discard('priority')
+        return sorted(list(tags))
+
     def get_task_sort_key(t):
         if 'priority' in t['tags']:
             return 0

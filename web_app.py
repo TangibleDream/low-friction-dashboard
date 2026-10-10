@@ -217,6 +217,7 @@ PARTIAL_TEMPLATE = """
                                 {% endfor %}
                             </td>
                             <td class="align-top text-end">
+                                {% if 'focus' in t.tags %}
                                 <div class="btn-group btn-group-sm">
                                     <button 
                                         data-raw="{{ t.raw|forceescape }}" 
@@ -225,6 +226,7 @@ PARTIAL_TEMPLATE = """
                                         data-raw="{{ t.raw|forceescape }}" 
                                         class="btn {% if 'focus' in t.tags %}btn-dark text-success border-success{% else %}btn-outline-success{% endif %} btn-complete-task">✓ Done</button>
                                 </div>
+                                {% endif %}
                             </td>
                         </tr>
                     {% endfor %}
@@ -286,6 +288,7 @@ PARTIAL_TEMPLATE = """
                                 {% endfor %}
                             </td>
                             <td style="width: 12%" class="align-top text-end">
+                                {% if 'focus' in t.tags %}
                                 <div class="btn-group btn-group-sm">
                                     <button 
                                         data-raw="{{ t.raw|forceescape }}" 
@@ -294,6 +297,7 @@ PARTIAL_TEMPLATE = """
                                         data-raw="{{ t.raw|forceescape }}" 
                                         class="btn {% if 'focus' in t.tags %}btn-dark text-success border-success{% else %}btn-outline-success{% endif %} btn-complete-task">✓ Done</button>
                                 </div>
+                                {% endif %}
                             </td>
                         </tr>
                         {% endfor %}

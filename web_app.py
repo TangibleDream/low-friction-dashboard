@@ -132,7 +132,36 @@ HTML_TEMPLATE = """
                 });
             }
         });
-</script>
+        // Submit New Task
+        document.addEventListener('click', function(e) {
+            if (e.target && e.target.id === 'btn-save-task') {
+                const symbol = document.getElementById('task-type').value;
+                const description = document.getElementById('task-desc').value.trim();
+                const rawTags = document.getElementById('task-tags-input').value.trim();
+
+                if (!description) {
+                    document.getElementById('task-desc').classList.add('is-invalid');
+                    return;
+                }
+
+                const tags = rawTags ? rawTags.split(/\s+/).map(t => t.replace(/^#/, '')) : [];
+
+                fetch('/add_task', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol, description, tags })
+                }).then(res => {
+                    if (res.ok) {
+                        // Hide modal and clear form
+                        const modalEl = document.getElementById('addTaskModal');
+                        const modal = bootstrap.Modal.getInstance(modalEl);
+                        if (modal) modal.hide();
+                        document.getElementById('create-task-form').reset();
+                    }
+                });
+            }
+        });
+    </script>
 </body>
 </html>
 """
@@ -140,15 +169,66 @@ HTML_TEMPLATE = """
 PARTIAL_TEMPLATE = """
 <!-- Schedule Structure Table (Today) -->
 <div class="card mb-4 shadow-sm">
+    <!-- Card Header with Creation Button -->
     <div class="card-header fw-bold text-uppercase text-secondary fs-6 d-flex justify-content-between align-items-center">
         <span>Today's Schedule Structure</span>
-        <div>
-            <span class="badge bg-secondary me-2">{{ data.today|length }} Tasks Total</span>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-secondary">{{ data.today|length }} Tasks Total</span>
             {% if data.today|length > 10 %}
             <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#todayCollapse">
-                Toggle All {{ data.today|length }} Tasks
+                Toggle All
             </button>
             {% endif %}
+            <button class="btn btn-sm btn-info text-dark fw-bold px-2" type="button" data-bs-toggle="modal" data-bs-target="#addTaskModal">
+                ＋ Task
+            </button>
+        </div>
+    </div>
+
+    <!-- Task Creation Modal -->
+    <div class="modal fade" id="addTaskModal" tabindex="-1" aria-labelledby="addTaskModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content bg-dark text-light border border-secondary shadow-lg">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title fs-6 fw-bold text-info" id="addTaskModalLabel">📌 Create Today's Task</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="create-task-form">
+                        <!-- Task Type Selector -->
+                        <div class="mb-3">
+                            <label class="form-label text-secondary small fw-bold">TASK TYPE</label>
+                            <select class="form-select bg-dark text-light border-secondary" id="task-type">
+                                <option value="*" selected>* Fluid Task (Default)</option>
+                                <option value="!">! Strong Commitment</option>
+                                <option value="?">? Arbitrary / Optional</option>
+                            </select>
+                        </div>
+
+                        <!-- Description Field -->
+                        <div class="mb-3">
+                            <label class="form-label text-secondary small fw-bold">TASK DESCRIPTION</label>
+                            <input type="text" class="form-input bg-dark text-light border-secondary form-control" id="task-desc" placeholder="e.g. Review pull request" required autocomplete="off">
+                        </div>
+
+                        <!-- Tag Selector with Suggestions -->
+                        <div class="mb-3">
+                            <label class="form-label text-secondary small fw-bold">TAGS (Type or select historical)</label>
+                            <input type="text" class="form-control bg-dark text-light border-secondary" id="task-tags-input" list="historical-tags-list" placeholder="e.g. priority work">
+                            <datalist id="historical-tags-list">
+                                {% for tag in data.all_tags %}
+                                    <option value="{{ tag }}"></option>
+                                {% endfor %}
+                            </datalist>
+                            <div class="form-text text-muted small">Space-separated tags. Selecting <code>priority</code> moves item to the top.</div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-info text-dark fw-bold" id="btn-save-task">Save Task</button>
+                </div>
+            </div>
         </div>
     </div>
     <div class="card-body p-0">
@@ -478,6 +558,43 @@ def index():
         HTML_TEMPLATE.replace("{% include 'board_partial.html' %}", PARTIAL_TEMPLATE), 
         data=data
     )
+
+@app.route("/add_task", methods=["POST"])
+def add_task():
+    req_data = request.get_json()
+    symbol = req_data.get("symbol", "*")  # !, *, or ?
+    description = req_data.get("description", "").strip()
+    tags = req_data.get("tags", [])  # list of tag strings
+
+    if not description or not TASK_FILE.exists():
+        return jsonify({"status": "error", "message": "Description required"}), 400
+
+    now = datetime.now()
+    today_str = f"{now.month}/{now.day}"
+
+    # Build the task line: e.g. "* 10/10 Write report #work #focus"
+    formatted_tags = " ".join([f"#{t.strip('#')}" for t in tags if t.strip()])
+    task_line = f"{symbol} {today_str} {description}"
+    if formatted_tags:
+        task_line += f" {formatted_tags}"
+
+    lines = TASK_FILE.read_text().splitlines()
+    new_lines = []
+    inserted = False
+
+    # Insert before the # Done section if present
+    for line in lines:
+        if line.strip() == "# Done" and not inserted:
+            new_lines.append(task_line)
+            new_lines.append("")
+            inserted = True
+        new_lines.append(line)
+
+    if not inserted:
+        new_lines.append(task_line)
+
+    TASK_FILE.write_text("\n".join(new_lines) + "\n")
+    return jsonify({"status": "ok"})
 
 @app.route("/partial")
 def partial():

@@ -162,6 +162,76 @@ HTML_TEMPLATE = """
                 });
             }
         });
+        // 1. Add new subtask row input field
+        document.addEventListener('click', function(e) {
+            if (e.target && e.target.id === 'btn-add-subtask-field') {
+                const container = document.getElementById('subtasks-container');
+                const row = document.createElement('div');
+                row.className = 'input-group input-group-sm mb-1 subtask-row';
+                row.innerHTML = `
+                    <span class="input-group-text bg-dark border-secondary text-secondary">↳</span>
+                    <input type="text" class="form-control bg-dark text-light border-secondary subtask-input" placeholder="Subtask description">
+                    <button type="button" class="btn btn-outline-danger btn-remove-subtask">✕</button>
+                `;
+                container.appendChild(row);
+                row.querySelector('input').focus();
+                return;
+            }
+
+            // 2. Remove specific subtask row input field
+            const removeBtn = e.target.closest('.btn-remove-subtask');
+            if (removeBtn) {
+                const row = removeBtn.closest('.subtask-row');
+                if (row) row.remove();
+                return;
+            }
+        });
+
+        // 3. Collect task and subtask data on save
+        document.addEventListener('click', function(e) {
+            if (e.target && e.target.id === 'btn-save-task') {
+                const dateVal = document.getElementById('task-date').value;
+                const symbol = document.getElementById('task-type').value;
+                const description = document.getElementById('task-desc').value.trim();
+                const rawTags = document.getElementById('task-tags-input').value.trim();
+
+                if (!description) {
+                    document.getElementById('task-desc').classList.add('is-invalid');
+                    return;
+                }
+
+                const tags = rawTags ? rawTags.split(/\s+/).map(t => t.replace(/^#/, '')) : [];
+
+                // Collect all non-empty subtask values
+                const subtaskInputs = document.querySelectorAll('.subtask-input');
+                const subtasks = Array.from(subtaskInputs)
+                    .map(input => input.value.trim())
+                    .filter(val => val.length > 0);
+
+                fetch('/add_task', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ date: dateVal, symbol, description, tags, subtasks })
+                }).then(res => {
+                    if (res.ok) {
+                        // Hide modal and reset form
+                        const modalEl = document.getElementById('addTaskModal');
+                        const modal = bootstrap.Modal.getInstance(modalEl);
+                        if (modal) modal.hide();
+                        document.getElementById('create-task-form').reset();
+                        
+                        // Reset subtasks container to single empty row
+                        document.getElementById('subtasks-container').innerHTML = `
+                            <div class="input-group input-group-sm mb-1 subtask-row">
+                                <span class="input-group-text bg-dark border-secondary text-secondary">↳</span>
+                                <input type="text" class="form-control bg-dark text-light border-secondary subtask-input" placeholder="Subtask description">
+                                <button type="button" class="btn btn-outline-danger btn-remove-subtask">✕</button>
+                            </div>
+                        `;
+                    }
+                });
+            }
+        });
     </script>
 </body>
 </html>
@@ -228,6 +298,21 @@ PARTIAL_TEMPLATE = """
                                 {% endfor %}
                             </datalist>
                             <div class="form-text text-muted small">Space-separated tags. Selecting <code>priority</code> moves item to the top.</div>
+                        </div>
+                        <!-- Subtasks Input Section inside #addTaskModal body -->
+                        <div class="mb-3">
+                            <label class="form-label text-secondary small fw-bold d-flex justify-content-between align-items-center">
+                                <span>SUBTASKS (Optional)</span>
+                                <button type="button" class="btn btn-sm btn-outline-info py-0 px-2 fs-7" id="btn-add-subtask-field">＋ Add Subtask</button>
+                            </label>
+                            <div id="subtasks-container">
+                                <!-- Dynamic subtask inputs appear here -->
+                                <div class="input-group input-group-sm mb-1 subtask-row">
+                                    <span class="input-group-text bg-dark border-secondary text-secondary">↳</span>
+                                    <input type="text" class="form-control bg-dark text-light border-secondary subtask-input" placeholder="Subtask description">
+                                    <button type="button" class="btn btn-outline-danger btn-remove-subtask">✕</button>
+                                </div>
+                            </div>
                         </div>
                     </form>
                 </div>
@@ -572,6 +657,7 @@ def add_task():
     symbol = req_data.get("symbol", "*")  # !, *, or ?
     description = req_data.get("description", "").strip()
     tags = req_data.get("tags", [])  # list of tag strings
+    subtasks = req_data.get("subtasks", [])  # list of subtask strings
     selected_date_str = req_data.get("date")  # Format: "YYYY-MM-DD"
 
     if not description or not TASK_FILE.exists():
@@ -588,11 +674,18 @@ def add_task():
 
     date_shorthand = f"{target_dt.month}/{target_dt.day}"
 
-    # Build the task line: e.g. "* 10/15 Complete quarterly report #work"
+    # Build the main task line
     formatted_tags = " ".join([f"#{t.strip('#')}" for t in tags if t.strip()])
-    task_line = f"{symbol} {date_shorthand} {description}"
+    parent_line = f"{symbol} {date_shorthand} {description}"
     if formatted_tags:
-        task_line += f" {formatted_tags}"
+        parent_line += f" {formatted_tags}"
+
+    # Build block: parent task + indented subtasks
+    task_block = [parent_line]
+    for sub in subtasks:
+        sub_clean = sub.strip()
+        if sub_clean:
+            task_block.append(f"  * {sub_clean}")
 
     lines = TASK_FILE.read_text().splitlines()
     new_lines = []
@@ -601,13 +694,13 @@ def add_task():
     # Insert before the # Done section if present
     for line in lines:
         if line.strip() == "# Done" and not inserted:
-            new_lines.append(task_line)
+            new_lines.extend(task_block)
             new_lines.append("")
             inserted = True
         new_lines.append(line)
 
     if not inserted:
-        new_lines.append(task_line)
+        new_lines.extend(task_block)
 
     TASK_FILE.write_text("\n".join(new_lines) + "\n")
     return jsonify({"status": "ok"})

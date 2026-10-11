@@ -135,6 +135,7 @@ HTML_TEMPLATE = """
         // Submit New Task
         document.addEventListener('click', function(e) {
             if (e.target && e.target.id === 'btn-save-task') {
+                const dateVal = document.getElementById('task-date').value;
                 const symbol = document.getElementById('task-type').value;
                 const description = document.getElementById('task-desc').value.trim();
                 const rawTags = document.getElementById('task-tags-input').value.trim();
@@ -149,10 +150,10 @@ HTML_TEMPLATE = """
                 fetch('/add_task', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ symbol, description, tags })
+                    body: JSON.stringify({ date: dateVal, symbol, description, tags })
                 }).then(res => {
                     if (res.ok) {
-                        // Hide modal and clear form
+                        // Hide modal and reset form
                         const modalEl = document.getElementById('addTaskModal');
                         const modal = bootstrap.Modal.getInstance(modalEl);
                         if (modal) modal.hide();
@@ -190,11 +191,17 @@ PARTIAL_TEMPLATE = """
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content bg-dark text-light border border-secondary shadow-lg">
                 <div class="modal-header border-secondary">
-                    <h5 class="modal-title fs-6 fw-bold text-info" id="addTaskModalLabel">📌 Create Today's Task</h5>
+                    <h5 class="modal-title fs-6 fw-bold text-info" id="addTaskModalLabel">📌 Create Scheduled Task</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <form id="create-task-form">
+                        <!-- Scheduled Date Selector -->
+                        <div class="mb-3">
+                            <label class="form-label text-secondary small fw-bold">SCHEDULED DATE</label>
+                            <input type="date" class="form-control bg-dark text-light border-secondary" id="task-date" value="{{ data.today_iso }}">
+                        </div>
+
                         <!-- Task Type Selector -->
                         <div class="mb-3">
                             <label class="form-label text-secondary small fw-bold">TASK TYPE</label>
@@ -208,7 +215,7 @@ PARTIAL_TEMPLATE = """
                         <!-- Description Field -->
                         <div class="mb-3">
                             <label class="form-label text-secondary small fw-bold">TASK DESCRIPTION</label>
-                            <input type="text" class="form-input bg-dark text-light border-secondary form-control" id="task-desc" placeholder="e.g. Review pull request" required autocomplete="off">
+                            <input type="text" class="form-control bg-dark text-light border-secondary" id="task-desc" placeholder="e.g. Review pull request" required autocomplete="off">
                         </div>
 
                         <!-- Tag Selector with Suggestions -->
@@ -565,16 +572,25 @@ def add_task():
     symbol = req_data.get("symbol", "*")  # !, *, or ?
     description = req_data.get("description", "").strip()
     tags = req_data.get("tags", [])  # list of tag strings
+    selected_date_str = req_data.get("date")  # Format: "YYYY-MM-DD"
 
     if not description or not TASK_FILE.exists():
         return jsonify({"status": "error", "message": "Description required"}), 400
 
-    now = datetime.now()
-    today_str = f"{now.month}/{now.day}"
+    # Parse selected date or default to today
+    if selected_date_str:
+        try:
+            target_dt = datetime.strptime(selected_date_str, "%Y-%m-%d")
+        except ValueError:
+            target_dt = datetime.now()
+    else:
+        target_dt = datetime.now()
 
-    # Build the task line: e.g. "* 10/10 Write report #work #focus"
+    date_shorthand = f"{target_dt.month}/{target_dt.day}"
+
+    # Build the task line: e.g. "* 10/15 Complete quarterly report #work"
     formatted_tags = " ".join([f"#{t.strip('#')}" for t in tags if t.strip()])
-    task_line = f"{symbol} {today_str} {description}"
+    task_line = f"{symbol} {date_shorthand} {description}"
     if formatted_tags:
         task_line += f" {formatted_tags}"
 
@@ -599,6 +615,7 @@ def add_task():
 @app.route("/partial")
 def partial():
     data = parse_tasks(str(TASK_FILE))
+    data["today_iso"] = datetime.now().strftime("%Y-%m-%d")
     return render_template_string(PARTIAL_TEMPLATE, data=data)
 
 @app.route("/shift_task", methods=["POST"])

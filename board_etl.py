@@ -286,6 +286,51 @@ def make_line_today(raw_line: str) -> str:
     # If no date is present, append today's M/D
     return f"{raw_line.strip()} {today_str}"
 
+def move_line_to_bottom(file_path: str, raw_line: str) -> None:
+    path = Path(file_path)
+    if not path.exists():
+        return
+
+    lines = path.read_text().splitlines()
+    new_lines = []
+    task_block = []
+    collecting = False
+
+    target_clean = raw_line.strip()
+
+    # 1. Collect target line and its indented subtasks while stripping #focus
+    for line in lines:
+        if line.strip() == target_clean:
+            collecting = True
+            # Strip #focus tag from the raw line
+            clean_line = re.sub(r'\s*#focus\b', '', line)
+            task_block.append(clean_line)
+            continue
+
+        if collecting:
+            if line.startswith(" ") or line.startswith("\t"):
+                task_block.append(line)
+                continue
+            else:
+                collecting = False
+
+        new_lines.append(line)
+
+    # 2. Insert collected block right before # Done (or at the bottom)
+    if task_block:
+        done_idx = None
+        for idx, line in enumerate(new_lines):
+            if line.strip() == "# Done":
+                done_idx = idx
+                break
+
+        if done_idx is not None:
+            final_lines = new_lines[:done_idx] + task_block + [""] + new_lines[done_idx:]
+        else:
+            final_lines = new_lines + [""] + task_block
+
+        path.write_text("\n".join(final_lines) + "\n")
+        
 def toggle_line_focus(file_path: str, raw_line: str) -> None:
     """
     Toggles the #focus tag on raw_line.

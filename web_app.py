@@ -2,9 +2,8 @@ import re
 import time
 from pathlib import Path
 from flask import Flask, render_template_string, Response, request, jsonify
-from board_etl import parse_tasks, shift_line_to_tomorrow, make_line_today, toggle_line_focus
+from board_etl import parse_tasks, shift_line_to_tomorrow, make_line_today, toggle_line_focus, move_line_to_bottom
 from datetime import datetime
-
 app = Flask(__name__)
 TASK_FILE = Path("tasks.txt")
 
@@ -40,6 +39,17 @@ HTML_TEMPLATE = """
 
     <script>
         let evtSource;
+        
+        // Re-initialize Bootstrap tooltips whenever new DOM content is injected via SSE
+        function initTooltips() {
+            const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+            [...tooltipTriggerList].map(tooltipTriggerEl => bootstrap.Tooltip.getOrCreateInstance(tooltipTriggerEl));
+        }
+
+        // Call on initial load
+        document.addEventListener("DOMContentLoaded", initTooltips);
+
+
 
         function connectSSE() {
             evtSource = new EventSource("/stream");
@@ -50,8 +60,7 @@ HTML_TEMPLATE = """
                         .then(res => res.text())
                         .then(html => {
                             document.getElementById('dashboard-content').innerHTML = html;
-                            document.getElementById('status-badge').textContent = "Live Sync Active";
-                            document.getElementById('status-badge').className = "badge bg-outline-light border text-success";
+                            initTooltips(); // Refresh tooltips after partial DOM swap
                         });
                 }
             };
@@ -114,6 +123,20 @@ HTML_TEMPLATE = """
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ raw_line: rawLine })
+                    });
+                    return;
+                }
+
+                const moveBottomBtn = e.target.closest('.btn-move-bottom');
+                if (moveBottomBtn) {
+                    // Hide active tooltip before removing element from DOM
+                    const tooltip = bootstrap.Tooltip.getInstance(moveBottomBtn);
+                    if (tooltip) tooltip.hide();
+
+                    fetch('/move_to_bottom', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ raw_line: moveBottomBtn.getAttribute('data-raw') })
                     });
                     return;
                 }
@@ -391,12 +414,32 @@ PARTIAL_TEMPLATE = """
                             <td class="align-top text-end">
                                 {% if 'focus' in t.tags %}
                                 <div class="btn-group btn-group-sm">
+                                    {% if t.time %}
+                                    <button 
+                                        data-title="{{ t.title|forceescape }}" 
+                                        data-time="{{ t.time|forceescape }}" 
+                                        data-date="{{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.today_iso }}"
+                                        class="btn btn-dark text-info border-info btn-add-calendar"
+                                        data-bs-toggle="tooltip"
+                                        data-bs-placement="top"
+                                        title="Add to Calendar">📅 Add to Calendar</button>
+                                    {% endif %}
+
+                                    {% if 'priority' not in t.tags %}
                                     <button 
                                         data-raw="{{ t.raw|forceescape }}" 
-                                        class="btn {% if 'focus' in t.tags %}btn-dark text-warning border-warning{% else %}btn-outline-warning{% endif %} btn-shift-task">➡️ Tomorrow</button>
+                                        class="btn btn-dark text-secondary border-secondary btn-move-bottom"
+                                        data-bs-toggle="tooltip"
+                                        data-bs-placement="top"
+                                        title="Move task to bottom">⬇️</button>
+                                    {% endif %}
+
                                     <button 
                                         data-raw="{{ t.raw|forceescape }}" 
-                                        class="btn {% if 'focus' in t.tags %}btn-dark text-success border-success{% else %}btn-outline-success{% endif %} btn-complete-task">✓ Done</button>
+                                        class="btn btn-dark text-warning border-warning btn-shift-task">➡️ Tomorrow</button>
+                                    <button 
+                                        data-raw="{{ t.raw|forceescape }}" 
+                                        class="btn btn-dark text-success border-success btn-complete-task">✓ Done</button>
                                 </div>
                                 {% endif %}
                             </td>
@@ -703,6 +746,17 @@ def add_task():
         new_lines.extend(task_block)
 
     TASK_FILE.write_text("\n".join(new_lines) + "\n")
+    return jsonify({"status": "ok"})
+
+@app.route("/move_to_bottom", methods=["POST"])
+def move_to_bottom():
+    req_data = request.get_json() or {}
+    raw_line = req_data.get("raw_line")
+
+    if not raw_line or not TASK_FILE.exists():
+        return jsonify({"status": "error"}), 400
+
+    move_line_to_bottom(str(TASK_FILE), raw_line)
     return jsonify({"status": "ok"})
 
 @app.route("/partial")

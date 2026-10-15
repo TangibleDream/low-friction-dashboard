@@ -2,8 +2,9 @@ import re
 import time
 from pathlib import Path
 from flask import Flask, render_template_string, Response, request, jsonify
-from board_etl import parse_tasks, shift_line_to_tomorrow, make_line_today, toggle_line_focus, move_line_to_bottom
+from board_etl import parse_tasks, shift_line_to_tomorrow, make_line_today, toggle_line_focus, move_line_to_bottom, delete_line
 from datetime import datetime
+
 app = Flask(__name__)
 TASK_FILE = Path("tasks.txt")
 
@@ -40,16 +41,12 @@ HTML_TEMPLATE = """
     <script>
         let evtSource;
         
-        // Re-initialize Bootstrap tooltips whenever new DOM content is injected via SSE
         function initTooltips() {
             const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
             [...tooltipTriggerList].map(tooltipTriggerEl => bootstrap.Tooltip.getOrCreateInstance(tooltipTriggerEl));
         }
 
-        // Call on initial load
         document.addEventListener("DOMContentLoaded", initTooltips);
-
-
 
         function connectSSE() {
             evtSource = new EventSource("/stream");
@@ -60,27 +57,23 @@ HTML_TEMPLATE = """
                         .then(res => res.text())
                         .then(html => {
                             document.getElementById('dashboard-content').innerHTML = html;
-                            initTooltips(); // Refresh tooltips after partial DOM swap
+                            initTooltips();
                         });
                 }
             };
 
             evtSource.onerror = function() {
-                // Update status indicator when connection drops
                 document.getElementById('status-badge').textContent = "Sync Reconnecting...";
                 document.getElementById('status-badge').className = "badge bg-outline-light border text-warning";
                 
                 evtSource.close();
-                // Retry connection after 3 seconds
                 setTimeout(connectSSE, 3000);
             };
         }
 
         connectSSE();
 
-        // Event delegation to capture task completions and shifts
         document.addEventListener('click', function(e) {
-            // 1. If any specific action button was clicked, let its handler execute and ignore row-focusing
             if (e.target.closest('button')) {
                 const shiftBtn = e.target.closest('.btn-shift-task');
                 if (shiftBtn) {
@@ -127,9 +120,21 @@ HTML_TEMPLATE = """
                     return;
                 }
 
+                const deleteBtn = e.target.closest('.btn-delete-task');
+                if (deleteBtn) {
+                    const tooltip = bootstrap.Tooltip.getInstance(deleteBtn);
+                    if (tooltip) tooltip.hide();
+
+                    fetch('/delete_task', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ raw_line: deleteBtn.getAttribute('data-raw') })
+                    });
+                    return;
+                }
+
                 const moveBottomBtn = e.target.closest('.btn-move-bottom');
                 if (moveBottomBtn) {
-                    // Hide active tooltip before removing element from DOM
                     const tooltip = bootstrap.Tooltip.getInstance(moveBottomBtn);
                     if (tooltip) tooltip.hide();
 
@@ -141,10 +146,9 @@ HTML_TEMPLATE = """
                     return;
                 }
 
-                return; // Exit early if it was another button (e.g. collapse toggle)
+                return;
             }
 
-            // 2. Otherwise, if any part of the task row was clicked, toggle focus for that task
             const taskRow = e.target.closest('.task-row');
             if (taskRow) {
                 const rawLine = taskRow.getAttribute('data-raw');
@@ -155,37 +159,7 @@ HTML_TEMPLATE = """
                 });
             }
         });
-        // Submit New Task
-        document.addEventListener('click', function(e) {
-            if (e.target && e.target.id === 'btn-save-task') {
-                const dateVal = document.getElementById('task-date').value;
-                const symbol = document.getElementById('task-type').value;
-                const description = document.getElementById('task-desc').value.trim();
-                const rawTags = document.getElementById('task-tags-input').value.trim();
 
-                if (!description) {
-                    document.getElementById('task-desc').classList.add('is-invalid');
-                    return;
-                }
-
-                const tags = rawTags ? rawTags.split(/\s+/).map(t => t.replace(/^#/, '')) : [];
-
-                fetch('/add_task', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ date: dateVal, symbol, description, tags })
-                }).then(res => {
-                    if (res.ok) {
-                        // Hide modal and reset form
-                        const modalEl = document.getElementById('addTaskModal');
-                        const modal = bootstrap.Modal.getInstance(modalEl);
-                        if (modal) modal.hide();
-                        document.getElementById('create-task-form').reset();
-                    }
-                });
-            }
-        });
-        // 1. Add new subtask row input field
         document.addEventListener('click', function(e) {
             if (e.target && e.target.id === 'btn-add-subtask-field') {
                 const container = document.getElementById('subtasks-container');
@@ -201,7 +175,6 @@ HTML_TEMPLATE = """
                 return;
             }
 
-            // 2. Remove specific subtask row input field
             const removeBtn = e.target.closest('.btn-remove-subtask');
             if (removeBtn) {
                 const row = removeBtn.closest('.subtask-row');
@@ -210,7 +183,6 @@ HTML_TEMPLATE = """
             }
         });
 
-        // 3. Collect task and subtask data on save
         document.addEventListener('click', function(e) {
             if (e.target && e.target.id === 'btn-save-task') {
                 const dateVal = document.getElementById('task-date').value;
@@ -224,8 +196,6 @@ HTML_TEMPLATE = """
                 }
 
                 const tags = rawTags ? rawTags.split(/\s+/).map(t => t.replace(/^#/, '')) : [];
-
-                // Collect all non-empty subtask values
                 const subtaskInputs = document.querySelectorAll('.subtask-input');
                 const subtasks = Array.from(subtaskInputs)
                     .map(input => input.value.trim())
@@ -237,13 +207,11 @@ HTML_TEMPLATE = """
                     body: JSON.stringify({ date: dateVal, symbol, description, tags, subtasks })
                 }).then(res => {
                     if (res.ok) {
-                        // Hide modal and reset form
                         const modalEl = document.getElementById('addTaskModal');
                         const modal = bootstrap.Modal.getInstance(modalEl);
                         if (modal) modal.hide();
                         document.getElementById('create-task-form').reset();
                         
-                        // Reset subtasks container to single empty row
                         document.getElementById('subtasks-container').innerHTML = `
                             <div class="input-group input-group-sm mb-1 subtask-row">
                                 <span class="input-group-text bg-dark border-secondary text-secondary">↳</span>
@@ -263,7 +231,6 @@ HTML_TEMPLATE = """
 PARTIAL_TEMPLATE = """
 <!-- Schedule Structure Table (Today) -->
 <div class="card mb-4 shadow-sm">
-    <!-- Card Header with Creation Button -->
     <div class="card-header fw-bold text-uppercase text-secondary fs-6 d-flex justify-content-between align-items-center">
         <span>Today's Schedule Structure</span>
         <div class="d-flex align-items-center gap-2">
@@ -285,17 +252,14 @@ PARTIAL_TEMPLATE = """
             <div class="modal-content bg-dark text-light border border-secondary shadow-lg">
                 <div class="modal-header border-secondary">
                     <h5 class="modal-title fs-6 fw-bold text-info" id="addTaskModalLabel">📌 Create Scheduled Task</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <form id="create-task-form">
-                        <!-- Scheduled Date Selector -->
                         <div class="mb-3">
                             <label class="form-label text-secondary small fw-bold">SCHEDULED DATE</label>
                             <input type="date" class="form-control bg-dark text-light border-secondary" id="task-date" value="{{ data.today_iso }}">
                         </div>
 
-                        <!-- Task Type Selector -->
                         <div class="mb-3">
                             <label class="form-label text-secondary small fw-bold">TASK TYPE</label>
                             <select class="form-select bg-dark text-light border-secondary" id="task-type">
@@ -305,13 +269,11 @@ PARTIAL_TEMPLATE = """
                             </select>
                         </div>
 
-                        <!-- Description Field -->
                         <div class="mb-3">
                             <label class="form-label text-secondary small fw-bold">TASK DESCRIPTION</label>
                             <input type="text" class="form-control bg-dark text-light border-secondary" id="task-desc" placeholder="e.g. Review pull request" required autocomplete="off">
                         </div>
 
-                        <!-- Tag Selector with Suggestions -->
                         <div class="mb-3">
                             <label class="form-label text-secondary small fw-bold">TAGS (Type or select historical)</label>
                             <input type="text" class="form-control bg-dark text-light border-secondary" id="task-tags-input" list="historical-tags-list" placeholder="e.g. priority work">
@@ -322,14 +284,13 @@ PARTIAL_TEMPLATE = """
                             </datalist>
                             <div class="form-text text-muted small">Space-separated tags. Selecting <code>priority</code> moves item to the top.</div>
                         </div>
-                        <!-- Subtasks Input Section inside #addTaskModal body -->
+
                         <div class="mb-3">
                             <label class="form-label text-secondary small fw-bold d-flex justify-content-between align-items-center">
                                 <span>SUBTASKS (Optional)</span>
                                 <button type="button" class="btn btn-sm btn-outline-info py-0 px-2 fs-7" id="btn-add-subtask-field">＋ Add Subtask</button>
                             </label>
                             <div id="subtasks-container">
-                                <!-- Dynamic subtask inputs appear here -->
                                 <div class="input-group input-group-sm mb-1 subtask-row">
                                     <span class="input-group-text bg-dark border-secondary text-secondary">↳</span>
                                     <input type="text" class="form-control bg-dark text-light border-secondary subtask-input" placeholder="Subtask description">
@@ -346,6 +307,7 @@ PARTIAL_TEMPLATE = """
             </div>
         </div>
     </div>
+
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-dark table-hover m-0 align-middle">
@@ -360,9 +322,7 @@ PARTIAL_TEMPLATE = """
                     </tr>
                 </thead>
                 <tbody>
-                    <!-- First 10 Tasks (Always Visible) -->
                     {% for t in data.today[:10] %}
-                        <!-- Table Row for t in data.today -->
                         <tr class="task-row {% if 'focus' in t.tags %}table-primary text-light fw-bold border-start border-4 border-info{% endif %}"
                             data-raw="{{ t.raw|forceescape }}"
                             style="cursor: pointer;">
@@ -437,9 +397,18 @@ PARTIAL_TEMPLATE = """
                                     <button 
                                         data-raw="{{ t.raw|forceescape }}" 
                                         class="btn btn-dark text-warning border-warning btn-shift-task">➡️ Tomorrow</button>
+
                                     <button 
                                         data-raw="{{ t.raw|forceescape }}" 
                                         class="btn btn-dark text-success border-success btn-complete-task">✓ Done</button>
+
+                                    <button 
+                                        type="button" 
+                                        data-raw="{{ t.raw|forceescape }}" 
+                                        class="btn btn-dark text-danger border-danger btn-delete-task" 
+                                        data-bs-toggle="tooltip"
+                                        data-bs-placement="top"
+                                        title="Delete task">✕</button>
                                 </div>
                                 {% endif %}
                             </td>
@@ -448,7 +417,6 @@ PARTIAL_TEMPLATE = """
                 </tbody>
             </table>
 
-            <!-- Overflow Tasks (Collapsed if > 10) -->
             {% if data.today|length > 10 %}
             <div class="collapse" id="todayCollapse">
                 <table class="table table-dark table-hover m-0 align-middle border-top border-secondary">
@@ -511,6 +479,13 @@ PARTIAL_TEMPLATE = """
                                     <button 
                                         data-raw="{{ t.raw|forceescape }}" 
                                         class="btn {% if 'focus' in t.tags %}btn-dark text-success border-success{% else %}btn-outline-success{% endif %} btn-complete-task">✓ Done</button>
+                                    <button 
+                                        type="button" 
+                                        data-raw="{{ t.raw|forceescape }}" 
+                                        class="btn btn-dark text-danger border-danger btn-delete-task" 
+                                        data-bs-toggle="tooltip"
+                                        data-bs-placement="top"
+                                        title="Delete task">✕</button>
                                 </div>
                                 {% endif %}
                             </td>
@@ -544,7 +519,6 @@ PARTIAL_TEMPLATE = """
         </button>
     </div>
     <div class="card-body p-0">
-        <!-- Initial 3 Preview Items -->
         <ul class="list-group list-group-flush border-bottom border-secondary">
             {% for t in data.future[:3] %}
                 <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center">
@@ -560,7 +534,6 @@ PARTIAL_TEMPLATE = """
             {% endfor %}
         </ul>
         
-        <!-- Expanded Remaining Items -->
         {% if data.future|length > 3 %}
         <div class="collapse" id="futureCollapse">
             <ul class="list-group list-group-flush">
@@ -672,11 +645,6 @@ PARTIAL_TEMPLATE = """
 # Helpers
 
 def insert_date_at_front(raw_line: str, date_str: str) -> str:
-    """
-    Inserts date_str right after the task symbol (!, *, ?), or at the beginning 
-    if no symbol is present.
-    Example: "* Dry Whites" -> "* 10/9 Dry Whites"
-    """
     stripped = raw_line.strip()
     if stripped and stripped[0] in "!*?":
         symbol = stripped[0]
@@ -697,16 +665,15 @@ def index():
 @app.route("/add_task", methods=["POST"])
 def add_task():
     req_data = request.get_json()
-    symbol = req_data.get("symbol", "*")  # !, *, or ?
+    symbol = req_data.get("symbol", "*")
     description = req_data.get("description", "").strip()
-    tags = req_data.get("tags", [])  # list of tag strings
-    subtasks = req_data.get("subtasks", [])  # list of subtask strings
-    selected_date_str = req_data.get("date")  # Format: "YYYY-MM-DD"
+    tags = req_data.get("tags", [])
+    subtasks = req_data.get("subtasks", [])
+    selected_date_str = req_data.get("date")
 
     if not description or not TASK_FILE.exists():
         return jsonify({"status": "error", "message": "Description required"}), 400
 
-    # Parse selected date or default to today
     if selected_date_str:
         try:
             target_dt = datetime.strptime(selected_date_str, "%Y-%m-%d")
@@ -717,13 +684,11 @@ def add_task():
 
     date_shorthand = f"{target_dt.month}/{target_dt.day}"
 
-    # Build the main task line
     formatted_tags = " ".join([f"#{t.strip('#')}" for t in tags if t.strip()])
     parent_line = f"{symbol} {date_shorthand} {description}"
     if formatted_tags:
         parent_line += f" {formatted_tags}"
 
-    # Build block: parent task + indented subtasks
     task_block = [parent_line]
     for sub in subtasks:
         sub_clean = sub.strip()
@@ -734,7 +699,6 @@ def add_task():
     new_lines = []
     inserted = False
 
-    # Insert before the # Done section if present
     for line in lines:
         if line.strip() == "# Done" and not inserted:
             new_lines.extend(task_block)
@@ -746,6 +710,17 @@ def add_task():
         new_lines.extend(task_block)
 
     TASK_FILE.write_text("\n".join(new_lines) + "\n")
+    return jsonify({"status": "ok"})
+
+@app.route("/delete_task", methods=["POST"])
+def delete_task():
+    req_data = request.get_json() or {}
+    raw_line = req_data.get("raw_line")
+
+    if not raw_line or not TASK_FILE.exists():
+        return jsonify({"status": "error"}), 400
+
+    delete_line(str(TASK_FILE), raw_line)
     return jsonify({"status": "ok"})
 
 @app.route("/move_to_bottom", methods=["POST"])
@@ -778,7 +753,6 @@ def shift_task():
 
     for line in lines:
         if line.strip() == raw_line.strip():
-            # Shift task date to tomorrow
             new_lines.append(shift_line_to_tomorrow(line))
         else:
             new_lines.append(line)
@@ -797,7 +771,6 @@ def stream():
                     last_mtime = mtime
                     yield "data: reload\n\n"
             
-            # Send periodic keep-alive comment every 15s to keep connection open
             yield ": keep-alive\n\n"
             time.sleep(0.5)
 
@@ -848,7 +821,6 @@ def complete_subtask():
 
         new_lines.append(line)
 
-    # If no remaining subtasks, auto-complete parent task
     if parent_line_idx is not None and remaining_subtasks_count == 0:
         parent_raw = lines[parent_line_idx].strip()
         final_lines = [l for l in new_lines if l.strip() != parent_raw]
@@ -889,10 +861,8 @@ def complete_task():
         if line.strip() == raw_line.strip():
             removing = True
             
-            # Check if line already has an explicit M/D date
             date_match = re.search(r'(?<!\d:)\b(\d{1,2}/\d{1,2})\b(?!\:\d{2})', line)
             if not date_match:
-                # Insert today's date at the front after symbol
                 completed_block.append(insert_date_at_front(line, today_str))
             else:
                 completed_block.append(line.strip())

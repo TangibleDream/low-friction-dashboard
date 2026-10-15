@@ -8,6 +8,95 @@ from rich.columns import Columns
 
 console = Console()
 
+def delete_line(file_path: str, raw_line: str) -> None:
+    path = Path(file_path)
+    if not path.exists():
+        return
+
+    lines = path.read_text().splitlines()
+    new_lines = []
+    deleting = False
+    target_clean = raw_line.strip()
+
+    for line in lines:
+        if line.strip() == target_clean:
+            deleting = True
+            continue
+
+        if deleting:
+            # Skip indented subtasks belonging to the deleted parent task
+            if line.startswith(" ") or line.startswith("\t"):
+                continue
+            else:
+                deleting = False
+
+        new_lines.append(line)
+
+    path.write_text("\n".join(new_lines) + "\n")
+
+def make_line_today(raw_line: str) -> str:
+    """
+    Replaces existing explicit M/D date shorthands with today's M/D date,
+    or appends today's M/D date if no date exists.
+    """
+    now = datetime.now()
+    today_str = f"{now.month}/{now.day}"
+    
+    # Match existing standalone M/D date (e.g., "10/12")
+    date_match = re.search(r'(?<!\d:)\b(\d{1,2}/\d{1,2})\b(?!\:\d{2})', raw_line)
+    
+    if date_match:
+        # Replace the existing future date with today's date
+        return raw_line[:date_match.start(1)] + today_str + raw_line[date_match.end(1):]
+        
+    # If no date is present, append today's M/D
+    return f"{raw_line.strip()} {today_str}"
+
+def move_line_to_bottom(file_path: str, raw_line: str) -> None:
+    path = Path(file_path)
+    if not path.exists():
+        return
+
+    lines = path.read_text().splitlines()
+    new_lines = []
+    task_block = []
+    collecting = False
+
+    target_clean = raw_line.strip()
+
+    # 1. Collect target line and its indented subtasks while stripping #focus
+    for line in lines:
+        if line.strip() == target_clean:
+            collecting = True
+            # Strip #focus tag from the raw line
+            clean_line = re.sub(r'\s*#focus\b', '', line)
+            task_block.append(clean_line)
+            continue
+
+        if collecting:
+            if line.startswith(" ") or line.startswith("\t"):
+                task_block.append(line)
+                continue
+            else:
+                collecting = False
+
+        new_lines.append(line)
+
+    # 2. Insert collected block right before # Done (or at the bottom)
+    if task_block:
+        done_idx = None
+        for idx, line in enumerate(new_lines):
+            if line.strip() == "# Done":
+                done_idx = idx
+                break
+
+        if done_idx is not None:
+            final_lines = new_lines[:done_idx] + task_block + [""] + new_lines[done_idx:]
+        else:
+            final_lines = new_lines + [""] + task_block
+
+        path.write_text("\n".join(final_lines) + "\n")
+
 def parse_date(content_str):
     """
     Parses explicit date shorthands like '10/5' or '10/5 4:30' from line content.
@@ -268,69 +357,6 @@ def shift_line_to_tomorrow(raw_line: str) -> str:
     tomorrow_str = f"{tomorrow_date.month}/{tomorrow_date.day}"
     return f"{raw_line.strip()} {tomorrow_str}"
 
-def make_line_today(raw_line: str) -> str:
-    """
-    Replaces existing explicit M/D date shorthands with today's M/D date,
-    or appends today's M/D date if no date exists.
-    """
-    now = datetime.now()
-    today_str = f"{now.month}/{now.day}"
-    
-    # Match existing standalone M/D date (e.g., "10/12")
-    date_match = re.search(r'(?<!\d:)\b(\d{1,2}/\d{1,2})\b(?!\:\d{2})', raw_line)
-    
-    if date_match:
-        # Replace the existing future date with today's date
-        return raw_line[:date_match.start(1)] + today_str + raw_line[date_match.end(1):]
-        
-    # If no date is present, append today's M/D
-    return f"{raw_line.strip()} {today_str}"
-
-def move_line_to_bottom(file_path: str, raw_line: str) -> None:
-    path = Path(file_path)
-    if not path.exists():
-        return
-
-    lines = path.read_text().splitlines()
-    new_lines = []
-    task_block = []
-    collecting = False
-
-    target_clean = raw_line.strip()
-
-    # 1. Collect target line and its indented subtasks while stripping #focus
-    for line in lines:
-        if line.strip() == target_clean:
-            collecting = True
-            # Strip #focus tag from the raw line
-            clean_line = re.sub(r'\s*#focus\b', '', line)
-            task_block.append(clean_line)
-            continue
-
-        if collecting:
-            if line.startswith(" ") or line.startswith("\t"):
-                task_block.append(line)
-                continue
-            else:
-                collecting = False
-
-        new_lines.append(line)
-
-    # 2. Insert collected block right before # Done (or at the bottom)
-    if task_block:
-        done_idx = None
-        for idx, line in enumerate(new_lines):
-            if line.strip() == "# Done":
-                done_idx = idx
-                break
-
-        if done_idx is not None:
-            final_lines = new_lines[:done_idx] + task_block + [""] + new_lines[done_idx:]
-        else:
-            final_lines = new_lines + [""] + task_block
-
-        path.write_text("\n".join(final_lines) + "\n")
-        
 def toggle_line_focus(file_path: str, raw_line: str) -> None:
     """
     Toggles the #focus tag on raw_line.

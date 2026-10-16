@@ -2,8 +2,9 @@ import re
 import time
 from pathlib import Path
 from flask import Flask, render_template_string, Response, request, jsonify
-from board_etl import parse_tasks, shift_line_to_tomorrow, make_line_today, toggle_line_focus, move_line_to_bottom, delete_line
+from utils.board_etl import parse_tasks, shift_line_to_tomorrow, make_line_today, toggle_line_focus, move_line_to_bottom, delete_line
 from datetime import datetime
+from utils.ics_utils import generate_task_ics
 
 app = Flask(__name__)
 TASK_FILE = Path("tasks.txt")
@@ -376,13 +377,13 @@ PARTIAL_TEMPLATE = """
                                 <div class="btn-group btn-group-sm">
                                     {% if t.time %}
                                     <button 
-                                        data-title="{{ t.title|forceescape }}" 
-                                        data-time="{{ t.time|forceescape }}" 
-                                        data-date="{{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.today_iso }}"
-                                        class="btn btn-dark text-info border-info btn-add-calendar"
-                                        data-bs-toggle="tooltip"
-                                        data-bs-placement="top"
-                                        title="Add to Calendar">📅 Add to Calendar</button>
+                                        <!-- Inside PARTIAL_TEMPLATE action group -->
+                                        <a 
+                                            href="/export_ics?title={{ t.title|urlencode }}&date={{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.today_iso }}&time={{ t.time|urlencode if t.time else '' }}" 
+                                            class="btn btn-dark text-info border-info"
+                                            data-bs-toggle="tooltip"
+                                            data-bs-placement="top"
+                                            title="Export to Outlook/iCal">📅 Add to Calendar</a>
                                     {% endif %}
 
                                     {% if 'priority' not in t.tags %}
@@ -722,6 +723,22 @@ def delete_task():
 
     delete_line(str(TASK_FILE), raw_line)
     return jsonify({"status": "ok"})
+
+@app.route("/export_ics", methods=["GET"])
+def export_ics():
+    title = request.args.get("title", "Scheduled Task")
+    date_str = request.args.get("date")
+    time_str = request.args.get("time")
+
+    ics_data = generate_task_ics(title=title, date_str=date_str, time_str=time_str)
+    
+    safe_filename = re.sub(r'[^a-zA-Z0-9]', '_', title).lower()[:20] or "task"
+    
+    return Response(
+        ics_data,
+        mimetype="text/calendar",
+        headers={"Content-Disposition": f"attachment; filename={safe_filename}.ics"}
+    )
 
 @app.route("/move_to_bottom", methods=["POST"])
 def move_to_bottom():

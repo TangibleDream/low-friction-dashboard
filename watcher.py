@@ -3,7 +3,7 @@ from pathlib import Path
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-from board_etl import parse_tasks, render_dashboard
+from utils.board_etl import parse_tasks, render_dashboard
 
 TASK_FILE = "tasks.txt"
 

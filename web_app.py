@@ -2,14 +2,22 @@ import re
 import time
 from pathlib import Path
 from flask import Flask, render_template_string, Response, request, jsonify
-from utils.board_etl import parse_tasks, shift_line_to_tomorrow, make_line_today, toggle_line_focus, move_line_to_bottom, delete_line
+from utils.board_etl import(
+    complete_task as etl_complete_task, 
+    delete_line,
+    make_line_today,
+    move_line_to_bottom,
+    parse_tasks, 
+    shift_line_to_tomorrow, 
+    toggle_line_focus 
+) 
 from datetime import datetime
 from utils.ics_utils import generate_task_ics
 
 app = Flask(__name__)
 TASK_FILE = Path("tasks.txt")
 
-HTML_TEMPLATE = """
+HTML_TEMPLATE = r"""
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="dark">
 <head>
@@ -860,46 +868,14 @@ def complete_subtask():
 
 @app.route("/complete_task", methods=["POST"])
 def complete_task():
-    req_data = request.get_json()
+    req_data = request.get_json() or {}
     raw_line = req_data.get("raw_line")
 
     if not raw_line or not TASK_FILE.exists():
-        return jsonify({"status": "error"}), 400
+        return jsonify({"status": "error", "message": "Missing raw_line or task file"}), 400
 
-    lines = TASK_FILE.read_text().splitlines()
-    new_lines = []
-    completed_block = []
-    removing = False
-
-    now = datetime.now()
-    today_str = f"{now.month}/{now.day}"
-
-    for line in lines:
-        if line.strip() == raw_line.strip():
-            removing = True
-            
-            date_match = re.search(r'(?<!\d:)\b(\d{1,2}/\d{1,2})\b(?!\:\d{2})', line)
-            if not date_match:
-                completed_block.append(insert_date_at_front(line, today_str))
-            else:
-                completed_block.append(line.strip())
-            continue
-        
-        if removing and (line.startswith(" ") or line.startswith("\t")):
-            completed_block.append(line.strip())
-            continue
-        else:
-            removing = False
-
-        new_lines.append(line)
-
-    if completed_block:
-        if "# Done" not in new_lines:
-            new_lines.append("\n# Done")
-        for item in completed_block:
-            clean_item = re.sub(r'^(?:x\s*)+', '', item)
-            new_lines.append(f"x {clean_item}")
-        TASK_FILE.write_text("\n".join(new_lines) + "\n")
+    # Delegate task manipulation directly to utils/board_etl.py
+    etl_complete_task(str(TASK_FILE), raw_line)
 
     return jsonify({"status": "ok"})
 

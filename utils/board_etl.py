@@ -1,5 +1,6 @@
+import html
 import re
-from datetime import datetime, timedelta  # <-- Add timedelta here
+from datetime import datetime, timedelta
 from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
@@ -7,6 +8,185 @@ from rich.table import Table
 from rich.columns import Columns
 
 console = Console()
+
+def render_dashboard(data):
+    """Renders a Rich terminal view of today's schedule structure and task panels."""
+    if isinstance(data, dict):
+        tasks = data.get("today", [])
+        future = data.get("future", [])
+    else:
+        tasks = data
+        future = []
+
+    console.clear()
+    console.print(Panel("[bold cyan]ADHD Executive Focus Engine[/bold cyan]", expand=False))
+
+    timeline_table = Table(title="[bold]Today's Schedule Structure[/bold]", show_header=True, header_style="bold magenta")
+    timeline_table.add_column("Type", style="dim", width=12)
+    timeline_table.add_column("Time / Date", width=18)
+    timeline_table.add_column("Context", width=12)
+    timeline_table.add_column("Task")
+
+    for t in tasks:
+        ctx_str = f"@{t['contexts'][0]}" if t['contexts'] else ""
+        task_display = f"[bold]{t['title']}[/bold]" if t['symbol'] == '!' else t['title']
+        if t['subtasks']:
+            for sub in t['subtasks']:
+                task_display += f"\n  [dim]↳ {sub}[/dim]"
+
+        if t['symbol'] == '!':
+            timeline_table.add_row("[bold red]STRONG[/bold red]", t['time'] or "Today", ctx_str, task_display)
+        elif t['symbol'] == '?':
+            timeline_table.add_row("[dim yellow]ARBITRARY[/dim yellow]", t['time'] or "Flexible", ctx_str, f"[italic dim]{task_display}[/italic dim]")
+        elif t['symbol'] == '*':
+            timeline_table.add_row("[cyan]FLUID[/cyan]", t['time'] or "Flexible", ctx_str, task_display)
+
+    quick_tasks = [f"• {t['title']}" for t in tasks if 'quick' in t['tags'] or 'low_energy' in t['tags']]
+    waiting_tasks = [
+        f"• {t['title']} [dim]({' '.join(f'#{tag}' for tag in t['tags'])})[/dim]"
+        for t in tasks if any(tag == 'wait' or tag.startswith('wait:') for tag in t['tags'])
+    ]
+
+    quick_panel = Panel(
+        "\n".join(quick_tasks) if quick_tasks else "[dim]None logged[/dim]",
+        title="⚡ Low-Hanging Fruit (<15m / Low Energy)",
+        border_style="green"
+    )
+    
+    waiting_panel = Panel(
+        "\n".join(waiting_tasks) if waiting_tasks else "[dim]None logged[/dim]",
+        title="⏳ Gap Fillers (While Waiting on Main Task)",
+        border_style="yellow"
+    )
+
+    console.print(timeline_table)
+    if future:
+        future_text = "\n".join(f"• [{t['time'] or 'Future'}] {t['title']}" for t in future[:3])
+        if len(future) > 3:
+            future_text += f"\n[dim]...and {len(future) - 3} more[/dim]"
+        console.print(Panel(future_text, title=f"📅 Future Tasks ({len(future)} Scheduled)", border_style="cyan"))
+
+    console.print(Columns([quick_panel, waiting_panel]))
+
+def insert_date_at_front(raw_line: str, date_str: str) -> str:
+    """
+    Inserts date_str right after the task symbol (!, *, ?), or at the beginning 
+    if no symbol is present.
+    Example: "* Dry Whites" -> "* 10/17 Dry Whites"
+    """
+    stripped = raw_line.strip()
+    if stripped and stripped[0] in "!*?":
+        symbol = stripped[0]
+        content = stripped[1:].strip()
+        return f"{symbol} {date_str} {content}"
+    return f"{date_str} {stripped}"
+# utils/board_etl.py
+import html
+import re
+from datetime import datetime, timedelta
+from pathlib import Path
+
+def complete_task(file_path: str, raw_line: str) -> None:
+    path = Path(file_path)
+    if not path.exists():
+        print(f"[DEBUG complete_task] Path does not exist: {file_path}")
+        return
+
+    raw_text = path.read_text()
+    lines = raw_text.splitlines()
+    new_lines = []
+    completed_block = []
+    removing = False
+
+    now = datetime.now()
+    today_str = f"{now.month}/{now.day}"
+    tomorrow = now + timedelta(days=1)
+    tomorrow_str = f"{tomorrow.month}/{tomorrow.day}"
+
+    # Normalize incoming string from web app/API
+    target_clean = html.unescape(raw_line).strip()
+    is_daily = bool(re.search(r'#daily\b', target_clean, re.IGNORECASE))
+
+    print(f"\n--- [DEBUG complete_task] BEGIN ---")
+    print(f"Incoming raw_line: {repr(raw_line)}")
+    print(f"Target clean:      {repr(target_clean)}")
+    print(f"is_daily detected: {is_daily}")
+
+    # Strip #focus case-insensitively for the completed record
+    clean_target = re.sub(r'\s*#focus\b', '', target_clean, flags=re.IGNORECASE)
+
+    for line in lines:
+        stripped_file_line = line.strip()
+        
+        # Match lines case-insensitively while ignoring extra inner whitespace
+        if stripped_file_line.lower() == target_clean.lower():
+            removing = True
+            print(f"-> MATCH FOUND IN FILE: {repr(line)}")
+            
+            date_match = re.search(r'(?<!\d:)\b(\d{1,2}/\d{1,2})\b(?!\:\d{2})', clean_target)
+            if not date_match:
+                completed_block.append(insert_date_at_front(clean_target, today_str))
+            else:
+                completed_block.append(clean_target)
+            continue
+        
+        if removing and (line.startswith(" ") or line.startswith("\t")):
+            completed_block.append(stripped_file_line)
+            continue
+        else:
+            removing = False
+
+        new_lines.append(line)
+
+    print(f"completed_block collected: {completed_block}")
+
+    # Build recurring copy for tomorrow if #daily was matched
+    recurring_block = []
+    if is_daily:
+        if not completed_block:
+            print("WARNING: is_daily is True, but completed_block is empty (file line match failed!)")
+        else:
+            recurring_line = clean_target
+            # Replace existing M/D date with tomorrow's M/D, or insert if absent
+            if re.search(r'(?<!\d:)\b(\d{1,2}/\d{1,2})\b(?!\:\d{2})', recurring_line):
+                recurring_line = re.sub(
+                    r'(?<!\d:)\b\d{1,2}/\d{1,2}\b(?!\:\d{2})', 
+                    tomorrow_str, 
+                    recurring_line, 
+                    count=1
+                )
+            else:
+                recurring_line = insert_date_at_front(recurring_line, tomorrow_str)
+            
+            recurring_block.append(recurring_line)
+            print(f"-> GENERATED RECURRING LINE FOR TOMORROW: {repr(recurring_line)}")
+
+    if completed_block:
+        done_idx = None
+        for idx, line in enumerate(new_lines):
+            if line.strip() == "# Done":
+                done_idx = idx
+                break
+
+        if done_idx is not None:
+            final_lines = new_lines[:done_idx] + recurring_block + new_lines[done_idx:]
+        else:
+            final_lines = new_lines + recurring_block
+
+        if "# Done" not in final_lines:
+            final_lines.append("\n# Done")
+
+        for item in completed_block:
+            clean_item = re.sub(r'^(?:x\s*)+', '', item)
+            final_lines.append(f"x {clean_item}")
+
+        final_content = "\n".join(final_lines) + "\n"
+        path.write_text(final_content)
+        print(f"-> FILE WRITTEN SUCCESSFULLY ({len(final_lines)} lines).")
+    else:
+        print("ERROR: completed_block was empty. File was NOT modified.")
+    
+    print(f"--- [DEBUG complete_task] END ---\n")
 
 def delete_line(file_path: str, raw_line: str) -> None:
     path = Path(file_path)
@@ -24,7 +204,6 @@ def delete_line(file_path: str, raw_line: str) -> None:
             continue
 
         if deleting:
-            # Skip indented subtasks belonging to the deleted parent task
             if line.startswith(" ") or line.startswith("\t"):
                 continue
             else:
@@ -35,21 +214,13 @@ def delete_line(file_path: str, raw_line: str) -> None:
     path.write_text("\n".join(new_lines) + "\n")
 
 def make_line_today(raw_line: str) -> str:
-    """
-    Replaces existing explicit M/D date shorthands with today's M/D date,
-    or appends today's M/D date if no date exists.
-    """
     now = datetime.now()
     today_str = f"{now.month}/{now.day}"
     
-    # Match existing standalone M/D date (e.g., "10/12")
     date_match = re.search(r'(?<!\d:)\b(\d{1,2}/\d{1,2})\b(?!\:\d{2})', raw_line)
-    
     if date_match:
-        # Replace the existing future date with today's date
         return raw_line[:date_match.start(1)] + today_str + raw_line[date_match.end(1):]
         
-    # If no date is present, append today's M/D
     return f"{raw_line.strip()} {today_str}"
 
 def move_line_to_bottom(file_path: str, raw_line: str) -> None:
@@ -64,11 +235,9 @@ def move_line_to_bottom(file_path: str, raw_line: str) -> None:
 
     target_clean = raw_line.strip()
 
-    # 1. Collect target line and its indented subtasks while stripping #focus
     for line in lines:
         if line.strip() == target_clean:
             collecting = True
-            # Strip #focus tag from the raw line
             clean_line = re.sub(r'\s*#focus\b', '', line)
             task_block.append(clean_line)
             continue
@@ -82,7 +251,6 @@ def move_line_to_bottom(file_path: str, raw_line: str) -> None:
 
         new_lines.append(line)
 
-    # 2. Insert collected block right before # Done (or at the bottom)
     if task_block:
         done_idx = None
         for idx, line in enumerate(new_lines):
@@ -98,10 +266,6 @@ def move_line_to_bottom(file_path: str, raw_line: str) -> None:
         path.write_text("\n".join(final_lines) + "\n")
 
 def parse_date(content_str):
-    """
-    Parses explicit date shorthands like '10/5' or '10/5 4:30' from line content.
-    Prevents time ranges like '10:30 - 11:00' from being falsely parsed as '10/30'.
-    """
     if not content_str:
         return None
     
@@ -116,12 +280,7 @@ def parse_date(content_str):
             return datetime(target_year, month, day)
         except ValueError:
             return None
-    return {
-        "today": today_tasks,
-        "future": future_tasks,
-        "completed": completed_tasks,
-        "all_tags": get_historical_tags(file_path)
-    }
+    return None
 
 def parse_tasks(file_path: str):
     today_tasks = []
@@ -129,7 +288,7 @@ def parse_tasks(file_path: str):
     completed_tasks = []
     
     if not Path(file_path).exists():
-        return {"today": today_tasks, "future": future_tasks, "completed": completed_tasks}
+        return {"today": today_tasks, "future": future_tasks, "completed": completed_tasks, "all_tags": []}
 
     current_task = None
     in_done_section = False
@@ -147,7 +306,7 @@ def parse_tasks(file_path: str):
                 in_done_section = True
                 continue
 
-            if stripped.startswith("x ") or (in_done_section and not (stripped and stripped[0] in "!*?")):
+            if stripped.startswith("x ") or (in_done_section and not (stripped and stripped[0] in "!*?-0123456789")):
                 clean_done = re.sub(r'^(?:x\s*)+', '', stripped)
                 clean_done = re.sub(r'^\*\s*', '', clean_done)
                 if clean_done:
@@ -163,24 +322,27 @@ def parse_tasks(file_path: str):
                     current_task['subtasks'].append(sub_title)
                 continue
 
-            symbol = stripped[0]
-            if symbol not in "!*?":
+            # Handle explicit dates or hyphen bullets gracefully
+            first_char = stripped[0]
+            if first_char in "!*?":
+                symbol = first_char
+                content = stripped[1:].strip()
+            elif first_char in "-0123456789":
+                symbol = "*"
+                content = stripped.lstrip("- ").strip()
+            else:
                 continue
 
             in_done_section = False
 
-            content = stripped[1:].strip()
-
             parsed_dt = parse_date(content)
 
-            # Match time or date+time string
             time_match = re.search(
                 r'\b((?:\d{1,2}/\d{1,2}\s+)?\d{1,2}:\d{2}(?:\s*-\s*\d{1,2}:\d{2})?)\b', 
                 content
             )
             time_str = time_match.group(1) if time_match else None
             
-            # Match standalone date (e.g. "10/5") if no full time string matched
             date_match = re.search(r'(?<!\d:)\b(\d{1,2}/\d{1,2})\b(?!\:\d{2})', content)
             date_str = date_match.group(1) if date_match else None
 
@@ -215,26 +377,7 @@ def parse_tasks(file_path: str):
             else:
                 today_tasks.append(current_task)
 
-    # Sort future tasks chronologically
     future_tasks.sort(key=lambda t: t['parsed_date'] or datetime.max)
-
-    # Sorting Hierarchy for Today's Tasks:
-    # 0 -> #priority tasks (highest precedence)
-    # 1 -> #focus task (floats right below priority items)
-    # 2 -> Standard tasks
-    def get_historical_tags(file_path: str) -> list[str]:
-        """Extracts all unique tags used across tasks.txt for auto-complete suggestions."""
-        path = Path(file_path)
-        if not path.exists():
-            return []
-        
-        content = path.read_text()
-        # Find all hashtag instances (excluding hex colors if any)
-        tags = set(re.findall(r'#([a-zA-Z0-9_\-]+)', content))
-        # Exclude internal control tags if desired
-        tags.discard('focus')
-        tags.discard('priority')
-        return sorted(list(tags))
 
     def get_task_sort_key(t):
         if 'priority' in t['tags']:
@@ -245,102 +388,26 @@ def parse_tasks(file_path: str):
 
     today_tasks.sort(key=get_task_sort_key)
 
+    all_tags = set()
+    path = Path(file_path)
+    if path.exists():
+        found = re.findall(r'#([a-zA-Z0-9_\-]+)', path.read_text())
+        for t in found:
+            if t not in ('focus', 'priority'):
+                all_tags.add(t)
+
     return {
         "today": today_tasks,
         "future": future_tasks,
-        "completed": completed_tasks
+        "completed": completed_tasks,
+        "all_tags": sorted(list(all_tags))
     }
 
-def render_dashboard(data):
-    if isinstance(data, dict):
-        tasks = data.get("today", [])
-        future = data.get("future", [])
-    else:
-        tasks = data
-        future = []
-
-    console.clear()
-    console.print(Panel("[bold cyan]ADHD Executive Focus Engine[/bold cyan]", expand=False))
-
-    timeline_table = Table(title="[bold]Today's Schedule Structure[/bold]", show_header=True, header_style="bold magenta")
-    timeline_table.add_column("Type", style="dim", width=12)
-    timeline_table.add_column("Time / Date", width=18)
-    timeline_table.add_column("Context", width=12)
-    timeline_table.add_column("Task")
-
-    for t in tasks:
-        ctx_str = f"@{t['contexts'][0]}" if t['contexts'] else ""
-        task_display = f"[bold]{t['title']}[/bold]" if t['symbol'] == '!' else t['title']
-        if t['subtasks']:
-            for sub in t['subtasks']:
-                task_display += f"\n  [dim]↳ {sub}[/dim]"
-
-        if t['symbol'] == '!':
-            timeline_table.add_row("[bold red]STRONG[/bold red]", t['time'] or "Today", ctx_str, task_display)
-        elif t['symbol'] == '?':
-            timeline_table.add_row("[dim yellow]ARBITRARY[/dim yellow]", t['time'] or "Flexible", ctx_str, f"[italic dim]{task_display}[/italic dim]")
-        elif t['symbol'] == '*':
-            timeline_table.add_row("[cyan]FLUID[/cyan]", t['time'] or "Flexible", ctx_str, task_display)
-
-    quick_tasks = []
-    waiting_tasks = []
-    
-    for t in tasks:
-        if 'quick' in t['tags'] or 'low_energy' in t['tags']:
-            quick_tasks.append(f"• {t['title']}")
-        if any(tag == 'wait' or tag.startswith('wait:') for tag in t['tags']):
-            waiting_tasks.append(f"• {t['title']} [dim]({' '.join(f'#{tag}' for tag in t['tags'])})[/dim]")
-
-    quick_panel = Panel(
-        "\n".join(quick_tasks) if quick_tasks else "[dim]None logged[/dim]",
-        title="⚡ Low-Hanging Fruit (<15m / Low Energy)",
-        border_style="green"
-    )
-    
-    waiting_panel = Panel(
-        "\n".join(waiting_tasks) if waiting_tasks else "[dim]None logged[/dim]",
-        title="⏳ Gap Fillers (While Waiting on Main Task)",
-        border_style="yellow"
-    )
-
-    clusters = {}
-    for t in tasks:
-        pair_tags = [tag.split(':')[1] for tag in t['tags'] if tag.startswith('pair:')]
-        for p in pair_tags:
-            clusters.setdefault(p, []).append(t['title'])
-
-    cluster_text = ""
-    for cluster_name, items in clusters.items():
-        cluster_text += f"[bold cyan]Group ({cluster_name}):[/bold cyan]\n"
-        for item in items:
-            cluster_text += f"  → {item}\n"
-
-    cluster_panel = Panel(
-        cluster_text if cluster_text else "[dim]No explicit pairs tagged (#pair:group)[/dim]",
-        title="🔗 Natural Task Clusters",
-        border_style="blue"
-    )
-
-    console.print(timeline_table)
-    if future:
-        future_text = "\n".join(f"• [{t['time'] or 'Future'}] {t['title']}" for t in future[:3])
-        if len(future) > 3:
-            future_text += f"\n[dim]...and {len(future) - 3} more[/dim]"
-        console.print(Panel(future_text, title=f"📅 Future Tasks ({len(future)} Scheduled)", border_style="cyan"))
-
-    console.print(Columns([quick_panel, waiting_panel]))
-    console.print(cluster_panel)
-
 def shift_line_to_tomorrow(raw_line: str) -> str:
-    """
-    If an explicit date (M/D) exists in the line, increments it by 1 day.
-    If no date exists, appends tomorrow's date (M/D) to the task string.
-    """
     now = datetime.now()
     today_date = now.date()
     tomorrow_date = today_date + timedelta(days=1)
     
-    # Match existing standalone M/D date (e.g., "10/5")
     date_match = re.search(r'(?<!\d:)\b(\d{1,2}/\d{1,2})\b(?!\:\d{2})', raw_line)
     
     if date_match:
@@ -353,15 +420,10 @@ def shift_line_to_tomorrow(raw_line: str) -> str:
         except ValueError:
             pass
             
-    # If no date is present, append tomorrow's M/D
     tomorrow_str = f"{tomorrow_date.month}/{tomorrow_date.day}"
     return f"{raw_line.strip()} {tomorrow_str}"
 
 def toggle_line_focus(file_path: str, raw_line: str) -> None:
-    """
-    Toggles the #focus tag on raw_line.
-    Ensures only one task across the file carries the #focus tag at a time.
-    """
     path = Path(file_path)
     if not path.exists():
         return
@@ -373,24 +435,14 @@ def toggle_line_focus(file_path: str, raw_line: str) -> None:
 
     for line in lines:
         stripped = line.strip()
-        # Always clear existing #focus tags from all lines
         cleared_line = re.sub(r'\s*#focus\b', '', line)
 
         if stripped == target_clean:
             if not is_currently_focused:
-                # Add #focus tag to target task
                 new_lines.append(f"{cleared_line.rstrip()} #focus")
             else:
-                # Task was already focused; leave it cleared (unfocused)
                 new_lines.append(cleared_line)
         else:
             new_lines.append(cleared_line)
 
     path.write_text("\n".join(new_lines) + "\n")
-    
-if __name__ == "__main__":
-    data = parse_tasks("tasks.txt")
-    if data["today"] or data["future"]:
-        render_dashboard(data)
-    else:
-        console.print("[yellow]Add tasks to tasks.txt to build your board![/yellow]")

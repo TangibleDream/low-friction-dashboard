@@ -1,37 +1,38 @@
 import pytest
-from web_app import app
+from datetime import datetime
+from utils.board_etl import complete_task
+
+today_str = f"{datetime.now().month}/{datetime.now().day}"
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     test_file = tmp_path / "tasks.txt"
-    initial_content = (
+    test_file.write_text(
         "* 6 guitar net 2 pieces @skill-building\n"
         "    * We Sing Hallelujah vs Uncle John's Band\n"
         "* Put away laundry @home #focus\n"
     )
-    test_file.write_text(initial_content)
     
-    monkeypatch.setattr("web_app.TASK_FILE", test_file)
+    import web_app
+    monkeypatch.setattr(web_app, 'TASK_FILE', test_file)
+    web_app.app.config['TESTING'] = True
     
-    app.config['TESTING'] = True
-    with app.test_client() as client:
-        yield client, test_file
+    with web_app.app.test_client() as test_client:
+        yield test_client, test_file
 
 def test_complete_subtask_with_single_quote(client):
     test_client, test_file = client
 
-    # Completing the subtask with an apostrophe/single quote
     response = test_client.post('/complete_subtask', json={
         "parent_title": "6 guitar net 2 pieces",
         "subtask": "We Sing Hallelujah vs Uncle John's Band"
     })
 
     assert response.status_code == 200
-    
-    # Since it was the last subtask under 6 guitar, the parent task auto-completes
+
     file_content = test_file.read_text()
     assert "# Done" in file_content
-    assert "x * 6 guitar net 2 pieces @skill-building" in file_content
+    assert f"x * {today_str} 6 guitar net 2 pieces @skill-building" in file_content
 
 def test_complete_main_task(client):
     test_client, test_file = client
@@ -42,4 +43,24 @@ def test_complete_main_task(client):
 
     assert response.status_code == 200
     file_content = test_file.read_text()
-    assert "x * Put away laundry @home #focus" in file_content
+    # Confirm task moved under # Done and #focus was stripped
+    assert f"x * {today_str} Put away laundry @home" in file_content
+
+def test_complete_daily_task_route(client):
+    test_client, test_file = client
+    test_file.write_text("* 10/17 Check for ripe figs #Daily #focus\n\n# Done\n")
+
+    response = test_client.post('/complete_task', json={
+        "raw_line": "* 10/17 Check for ripe figs #Daily #focus"
+    })
+
+    assert response.status_code == 200
+
+    content = test_file.read_text()
+    tomorrow = datetime.now()
+    tomorrow_str = f"{datetime.now().month}/{datetime.now().day + 1}"
+
+    # Confirm recurring task spawned for tomorrow
+    assert f"* {tomorrow_str} Check for ripe figs #Daily" in content
+    # Confirm completed entry moved under # Done without #focus
+    assert "x * 10/17 Check for ripe figs #Daily" in content

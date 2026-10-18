@@ -89,39 +89,33 @@ from pathlib import Path
 def complete_task(file_path: str, raw_line: str) -> None:
     path = Path(file_path)
     if not path.exists():
-        print(f"[DEBUG complete_task] Path does not exist: {file_path}")
         return
 
-    raw_text = path.read_text()
-    lines = raw_text.splitlines()
+    lines = path.read_text().splitlines()
     new_lines = []
     completed_block = []
     removing = False
 
     now = datetime.now()
     today_str = f"{now.month}/{now.day}"
-    tomorrow = now + timedelta(days=1)
-    tomorrow_str = f"{tomorrow.month}/{tomorrow.day}"
 
-    # Normalize incoming string from web app/API
     target_clean = html.unescape(raw_line).strip()
-    is_daily = bool(re.search(r'#daily\b', target_clean, re.IGNORECASE))
 
-    print(f"\n--- [DEBUG complete_task] BEGIN ---")
-    print(f"Incoming raw_line: {repr(raw_line)}")
-    print(f"Target clean:      {repr(target_clean)}")
-    print(f"is_daily detected: {is_daily}")
+    # Determine recurrence days offset: #daily -> 1, #X-days / #X-day -> X
+    days_offset = None
+    if re.search(r'#daily\b', target_clean, re.IGNORECASE):
+        days_offset = 1
+    else:
+        x_days_match = re.search(r'#(\d+)-days?\b', target_clean, re.IGNORECASE)
+        if x_days_match:
+            days_offset = int(x_days_match.group(1))
 
-    # Strip #focus case-insensitively for the completed record
+    # Strip #focus case-insensitively
     clean_target = re.sub(r'\s*#focus\b', '', target_clean, flags=re.IGNORECASE)
 
     for line in lines:
-        stripped_file_line = line.strip()
-        
-        # Match lines case-insensitively while ignoring extra inner whitespace
-        if stripped_file_line.lower() == target_clean.lower():
+        if line.strip().lower() == target_clean.lower():
             removing = True
-            print(f"-> MATCH FOUND IN FILE: {repr(line)}")
             
             date_match = re.search(r'(?<!\d:)\b(\d{1,2}/\d{1,2})\b(?!\:\d{2})', clean_target)
             if not date_match:
@@ -131,35 +125,31 @@ def complete_task(file_path: str, raw_line: str) -> None:
             continue
         
         if removing and (line.startswith(" ") or line.startswith("\t")):
-            completed_block.append(stripped_file_line)
+            completed_block.append(line.strip())
             continue
         else:
             removing = False
 
         new_lines.append(line)
 
-    print(f"completed_block collected: {completed_block}")
-
-    # Build recurring copy for tomorrow if #daily was matched
+    # Build recurring copy if recurrence tag (#daily or #X-Days) was detected
     recurring_block = []
-    if is_daily:
-        if not completed_block:
-            print("WARNING: is_daily is True, but completed_block is empty (file line match failed!)")
+    if days_offset is not None and completed_block:
+        next_dt = now + timedelta(days=days_offset)
+        next_date_str = f"{next_dt.month}/{next_dt.day}"
+
+        recurring_line = clean_target
+        if re.search(r'(?<!\d:)\b(\d{1,2}/\d{1,2})\b(?!\:\d{2})', recurring_line):
+            recurring_line = re.sub(
+                r'(?<!\d:)\b\d{1,2}/\d{1,2}\b(?!\:\d{2})', 
+                next_date_str, 
+                recurring_line, 
+                count=1
+            )
         else:
-            recurring_line = clean_target
-            # Replace existing M/D date with tomorrow's M/D, or insert if absent
-            if re.search(r'(?<!\d:)\b(\d{1,2}/\d{1,2})\b(?!\:\d{2})', recurring_line):
-                recurring_line = re.sub(
-                    r'(?<!\d:)\b\d{1,2}/\d{1,2}\b(?!\:\d{2})', 
-                    tomorrow_str, 
-                    recurring_line, 
-                    count=1
-                )
-            else:
-                recurring_line = insert_date_at_front(recurring_line, tomorrow_str)
-            
-            recurring_block.append(recurring_line)
-            print(f"-> GENERATED RECURRING LINE FOR TOMORROW: {repr(recurring_line)}")
+            recurring_line = insert_date_at_front(recurring_line, next_date_str)
+        
+        recurring_block.append(recurring_line)
 
     if completed_block:
         done_idx = None
@@ -180,13 +170,7 @@ def complete_task(file_path: str, raw_line: str) -> None:
             clean_item = re.sub(r'^(?:x\s*)+', '', item)
             final_lines.append(f"x {clean_item}")
 
-        final_content = "\n".join(final_lines) + "\n"
-        path.write_text(final_content)
-        print(f"-> FILE WRITTEN SUCCESSFULLY ({len(final_lines)} lines).")
-    else:
-        print("ERROR: completed_block was empty. File was NOT modified.")
-    
-    print(f"--- [DEBUG complete_task] END ---\n")
+        path.write_text("\n".join(final_lines) + "\n")
 
 def delete_line(file_path: str, raw_line: str) -> None:
     path = Path(file_path)

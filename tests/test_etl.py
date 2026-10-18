@@ -77,6 +77,20 @@ def test_complete_task_end_to_end_daily(tmp_path):
     # 2. Assert original task was moved below # Done
     assert "x 10/17 Check for ripe figs #Daily" in content
 
+def test_complete_x_days_recurring_task(tmp_path):
+    task_file = tmp_path / "tasks.txt"
+    task_file.write_text("* 10/17 Check fig tree soil #2-Days #focus\n\n# Done\n")
+
+    complete_task(str(task_file), "* 10/17 Check fig tree soil #2-Days #focus")
+
+    content = task_file.read_text()
+    two_days_out = datetime.now() + timedelta(days=2)
+    expected_date = f"{two_days_out.month}/{two_days_out.day}"
+
+    # Confirm dynamic date incremented by 2 days
+    assert f"* {expected_date} Check fig tree soil #2-Days" in content
+    assert "x * 10/17 Check fig tree soil #2-Days" in content
+
 def test_delete_line_with_subtasks(tmp_path):
     task_file = tmp_path / "tasks.txt"
     task_file.write_text(

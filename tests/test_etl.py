@@ -1,3 +1,4 @@
+import pytest
 from datetime import datetime, timedelta
 from utils.board_etl import (
     insert_date_at_front,
@@ -76,6 +77,44 @@ def test_complete_task_end_to_end_daily(tmp_path):
     
     # 2. Assert original task was moved below # Done
     assert "x 10/17 Check for ripe figs #Daily" in content
+
+def test_complete_weekdays_task_midweek(tmp_path, monkeypatch):
+    # Simulate current day as Wednesday (2026-10-21)
+    wednesday = datetime(2026, 10, 21)
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls):
+            return wednesday
+
+    monkeypatch.setattr("utils.board_etl.datetime", FixedDatetime)
+
+    task_file = tmp_path / "tasks.txt"
+    task_file.write_text("* 10/21 Standup sync #Weekdays #focus\n\n# Done\n")
+
+    complete_task(str(task_file), "* 10/21 Standup sync #Weekdays #focus")
+
+    content = task_file.read_text()
+    # On Wednesday, next instance should be Thursday (10/22)
+    assert "* 10/22 Standup sync #Weekdays" in content
+
+def test_complete_weekdays_task_friday(tmp_path, monkeypatch):
+    # Simulate current day as Friday (2026-10-23)
+    friday = datetime(2026, 10, 23)
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls):
+            return friday
+
+    monkeypatch.setattr("utils.board_etl.datetime", FixedDatetime)
+
+    task_file = tmp_path / "tasks.txt"
+    task_file.write_text("* 10/23 Submit weekly report #Weekdays #focus\n\n# Done\n")
+
+    complete_task(str(task_file), "* 10/23 Submit weekly report #Weekdays #focus")
+
+    content = task_file.read_text()
+    # On Friday, next instance should skip the weekend to Monday (10/26)
+    assert "* 10/26 Submit weekly report #Weekdays" in content
 
 def test_complete_x_days_recurring_task(tmp_path):
     task_file = tmp_path / "tasks.txt"

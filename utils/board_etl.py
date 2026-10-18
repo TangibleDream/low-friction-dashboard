@@ -79,12 +79,7 @@ def insert_date_at_front(raw_line: str, date_str: str) -> str:
         symbol = stripped[0]
         content = stripped[1:].strip()
         return f"{symbol} {date_str} {content}"
-    return f"{date_str} {stripped}"
-# utils/board_etl.py
-import html
-import re
-from datetime import datetime, timedelta
-from pathlib import Path
+    return f"{date_str} {stripped}"# utils/board_etl.py
 
 def complete_task(file_path: str, raw_line: str) -> None:
     path = Path(file_path)
@@ -101,9 +96,17 @@ def complete_task(file_path: str, raw_line: str) -> None:
 
     target_clean = html.unescape(raw_line).strip()
 
-    # Determine recurrence days offset: #daily -> 1, #X-days / #X-day -> X
+    # Determine recurrence days offset
     days_offset = None
-    if re.search(r'#daily\b', target_clean, re.IGNORECASE):
+    if re.search(r'#weekdays\b', target_clean, re.IGNORECASE):
+        current_weekday = now.weekday()  # Monday=0, Tuesday=1, ... Friday=4, Saturday=5, Sunday=6
+        if current_weekday == 4:    # Friday -> 3 days to Monday
+            days_offset = 3
+        elif current_weekday == 5:  # Saturday -> 2 days to Monday
+            days_offset = 2
+        else:                       # Sunday (6) thru Thursday (3) -> 1 day
+            days_offset = 1
+    elif re.search(r'#daily\b', target_clean, re.IGNORECASE):
         days_offset = 1
     else:
         x_days_match = re.search(r'#(\d+)-days?\b', target_clean, re.IGNORECASE)
@@ -132,7 +135,7 @@ def complete_task(file_path: str, raw_line: str) -> None:
 
         new_lines.append(line)
 
-    # Build recurring copy if recurrence tag (#daily or #X-Days) was detected
+    # Build recurring copy for next scheduled date
     recurring_block = []
     if days_offset is not None and completed_block:
         next_dt = now + timedelta(days=days_offset)

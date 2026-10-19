@@ -1,16 +1,16 @@
 import pytest
 from datetime import datetime, timedelta
 from utils.board_etl import (
-    insert_date_at_front,
     complete_task,
     delete_line,
+    get_next_month_date,
+    insert_date_at_front,
     make_line_today,
     move_line_to_bottom,
     parse_tasks,
     shift_line_to_tomorrow,
     toggle_line_focus,
 )
-
 def test_complete_capitalized_daily_recurring_task(tmp_path):
     task_file = tmp_path / "tasks.txt"
     task_file.write_text("! 10/17 10:00 Walk 11K steps #Daily #focus\n\n# Done\n")
@@ -59,15 +59,22 @@ def test_complete_daily_task_with_html_escaped_payload(tmp_path):
     assert "x - 10/17 Check for ripe figs & herbs #Daily" in content
 
 def test_complete_monthly_task(tmp_path):
-    task_file = tmp_path / "tasks.txt"
-    task_file.write_text("* 10/18 Pay mortgage #Monthly #focus\n\n# Done\n")
+    now = datetime.now()
+    today_str = f"{now.month}/{now.day}"
+    
+    next_month_dt = get_next_month_date(now)
+    expected_next_str = f"{next_month_dt.month}/{next_month_dt.day}"
 
-    complete_task(str(task_file), "* 10/18 Pay mortgage #Monthly #focus")
+    task_file = tmp_path / "tasks.txt"
+    task_file.write_text(f"* {today_str} Pay mortgage #Monthly #focus\n\n# Done\n")
+
+    complete_task(str(task_file), f"* {today_str} Pay mortgage #Monthly #focus")
 
     content = task_file.read_text()
-    # Expect 1 month later (11/18)
-    assert "* 11/18 Pay mortgage #Monthly" in content
-    assert "x * 10/18 Pay mortgage #Monthly" in content
+    
+    # Dynamic assertions relative to datetime.now()
+    assert f"* {expected_next_str} Pay mortgage #Monthly" in content
+    assert f"x * {today_str} Pay mortgage #Monthly" in content
 
 def test_complete_nth_weekday_task(tmp_path, monkeypatch):
     # Simulate current date as 3rd Sunday of October 2026 (2026-10-18)

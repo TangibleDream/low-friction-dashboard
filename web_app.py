@@ -1,5 +1,6 @@
 import re
 import time
+import html
 from pathlib import Path
 from flask import Flask, render_template_string, Response, request, jsonify
 from utils.board_etl import(
@@ -170,6 +171,81 @@ HTML_TEMPLATE = r"""
         });
 
         document.addEventListener('click', function(e) {
+            const editBtn = e.target.closest('.btn-edit-task');
+            if (editBtn) {
+                const tooltip = bootstrap.Tooltip.getInstance(editBtn);
+                if (tooltip) tooltip.hide();
+
+                const oldRawEl = document.getElementById('edit-old-raw');
+                const dateEl = document.getElementById('edit-task-date');
+                const typeEl = document.getElementById('edit-task-type');
+                const descEl = document.getElementById('edit-task-desc');
+                const tagsEl = document.getElementById('edit-task-tags-input');
+
+                if (!oldRawEl || !dateEl || !typeEl || !descEl || !tagsEl) {
+                    console.error("Edit modal elements missing from DOM");
+                    return;
+                }
+
+                oldRawEl.value = editBtn.getAttribute('data-raw') || '';
+                dateEl.value = editBtn.getAttribute('data-date') || '';
+                typeEl.value = editBtn.getAttribute('data-symbol') || '*';
+                descEl.value = editBtn.getAttribute('data-title') || '';
+                tagsEl.value = editBtn.getAttribute('data-tags') || '';
+
+                const subtasksContainer = document.getElementById('edit-subtasks-container');
+                if (subtasksContainer) {
+                    subtasksContainer.innerHTML = '';
+                    const subtasks = JSON.parse(editBtn.getAttribute('data-subtasks') || '[]');
+                    
+                    if (subtasks.length > 0) {
+                        subtasks.forEach(sub => {
+                            const row = document.createElement('div');
+                            row.className = 'input-group input-group-sm mb-1 subtask-row';
+                            row.innerHTML = `
+                                <span class="input-group-text bg-dark border-secondary text-secondary">↳</span>
+                                <input type="text" class="form-control bg-dark text-light border-secondary subtask-input" value="${sub}">
+                                <button type="button" class="btn btn-outline-danger btn-remove-subtask">✕</button>
+                            `;
+                            subtasksContainer.appendChild(row);
+                        });
+                    } else {
+                        subtasksContainer.innerHTML = `
+                            <div class="input-group input-group-sm mb-1 subtask-row">
+                                <span class="input-group-text bg-dark border-secondary text-secondary">↳</span>
+                                <input type="text" class="form-control bg-dark text-light border-secondary subtask-input" placeholder="Subtask description">
+                                <button type="button" class="btn btn-outline-danger btn-remove-subtask">✕</button>
+                            </div>
+                        `;
+                    }
+                }
+
+                const modalEl = document.getElementById('editTaskModal');
+                if (modalEl) {
+                    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                    modal.show();
+                }
+                return;
+            }
+
+            if (e.target && e.target.id === 'btn-add-edit-subtask-field') {
+                const container = document.getElementById('edit-subtasks-container');
+                if (container) {
+                    const row = document.createElement('div');
+                    row.className = 'input-group input-group-sm mb-1 subtask-row';
+                    row.innerHTML = `
+                        <span class="input-group-text bg-dark border-secondary text-secondary">↳</span>
+                        <input type="text" class="form-control bg-dark text-light border-secondary subtask-input" placeholder="Subtask description">
+                        <button type="button" class="btn btn-outline-danger btn-remove-subtask">✕</button>
+                    `;
+                    container.appendChild(row);
+                    row.querySelector('input').focus();
+                }
+                return;
+            }
+        });
+
+        document.addEventListener('click', function(e) {
             if (e.target && e.target.id === 'btn-add-subtask-field') {
                 const container = document.getElementById('subtasks-container');
                 const row = document.createElement('div');
@@ -232,28 +308,48 @@ HTML_TEMPLATE = r"""
                 });
             }
         });
-    </script>
-</body>
-</html>
-"""
+        document.addEventListener('click', function(e) {
+            if (e.target && e.target.id === 'btn-update-task') {
+                const oldRaw = document.getElementById('edit-old-raw').value;
+                const dateVal = document.getElementById('edit-task-date').value;
+                const symbol = document.getElementById('edit-task-type').value;
+                const description = document.getElementById('edit-task-desc').value.trim();
+                const rawTags = document.getElementById('edit-task-tags-input').value.trim();
 
-PARTIAL_TEMPLATE = """
-<!-- Schedule Structure Table (Today) -->
-<div class="card mb-4 shadow-sm">
-    <div class="card-header fw-bold text-uppercase text-secondary fs-6 d-flex justify-content-between align-items-center">
-        <span>Today's Schedule Structure</span>
-        <div class="d-flex align-items-center gap-2">
-            <span class="badge bg-secondary">{{ data.today|length }} Tasks Total</span>
-            {% if data.today|length > 10 %}
-            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#todayCollapse">
-                Toggle All
-            </button>
-            {% endif %}
-            <button class="btn btn-sm btn-info text-dark fw-bold px-2" type="button" data-bs-toggle="modal" data-bs-target="#addTaskModal">
-                ＋ Task
-            </button>
-        </div>
-    </div>
+                if (!description) {
+                    document.getElementById('edit-task-desc').classList.add('is-invalid');
+                    return;
+                }
+
+                const tags = rawTags ? rawTags.split(/\s+/).map(t => t.replace(/^#/, '')) : [];
+                const subtaskInputs = document.querySelectorAll('#edit-subtasks-container .subtask-input');
+                const subtasks = Array.from(subtaskInputs)
+                    .map(input => input.value.trim())
+                    .filter(val => val.length > 0);
+
+                fetch('/edit_task', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        old_raw: oldRaw, 
+                        date: dateVal, 
+                        symbol: symbol, 
+                        description: description, 
+                        tags: tags, 
+                        subtasks: subtasks 
+                    })
+                }).then(res => {
+                    if (res.ok) {
+                        const modalEl = document.getElementById('editTaskModal');
+                        const modal = bootstrap.Modal.getInstance(modalEl);
+                        if (modal) modal.hide();
+                    }
+                });
+                return;
+            }
+        });
+    </script>
+    <!-- Inside HTML_TEMPLATE, above </body> -->
 
     <!-- Task Creation Modal -->
     <div class="modal fade" id="addTaskModal" tabindex="-1" aria-labelledby="addTaskModalLabel" aria-hidden="true">
@@ -266,7 +362,7 @@ PARTIAL_TEMPLATE = """
                     <form id="create-task-form">
                         <div class="mb-3">
                             <label class="form-label text-secondary small fw-bold">SCHEDULED DATE</label>
-                            <input type="date" class="form-control bg-dark text-light border-secondary" id="task-date" value="{{ data.today_iso }}">
+                            <input type="date" class="form-control bg-dark text-light border-secondary" id="task-date">
                         </div>
 
                         <div class="mb-3">
@@ -291,7 +387,6 @@ PARTIAL_TEMPLATE = """
                                     <option value="{{ tag }}"></option>
                                 {% endfor %}
                             </datalist>
-                            <div class="form-text text-muted small">Space-separated tags. Selecting <code>priority</code> moves item to the top.</div>
                         </div>
 
                         <div class="mb-3">
@@ -317,6 +412,78 @@ PARTIAL_TEMPLATE = """
         </div>
     </div>
 
+    <!-- Task Edit Modal -->
+    <div class="modal fade" id="editTaskModal" tabindex="-1" aria-labelledby="editTaskModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content bg-dark text-light border border-secondary shadow-lg">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title fs-6 fw-bold text-info" id="editTaskModalLabel">✏️ Edit Scheduled Task</h5>
+                </div>
+                <div class="modal-body">
+                    <form id="edit-task-form">
+                        <input type="hidden" id="edit-old-raw">
+                        
+                        <div class="mb-3">
+                            <label class="form-label text-secondary small fw-bold">SCHEDULED DATE</label>
+                            <input type="date" class="form-control bg-dark text-light border-secondary" id="edit-task-date">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label text-secondary small fw-bold">TASK TYPE</label>
+                            <select class="form-select bg-dark text-light border-secondary" id="edit-task-type">
+                                <option value="*">* Fluid Task (Default)</option>
+                                <option value="!">! Strong Commitment</option>
+                                <option value="?">? Arbitrary / Optional</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label text-secondary small fw-bold">TASK DESCRIPTION</label>
+                            <input type="text" class="form-control bg-dark text-light border-secondary" id="edit-task-desc" required autocomplete="off">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label text-secondary small fw-bold">TAGS</label>
+                            <input type="text" class="form-control bg-dark text-light border-secondary" id="edit-task-tags-input" list="historical-tags-list">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label text-secondary small fw-bold d-flex justify-content-between align-items-center">
+                                <span>SUBTASKS</span>
+                                <button type="button" class="btn btn-sm btn-outline-info py-0 px-2 fs-7" id="btn-add-edit-subtask-field">＋ Add Subtask</button>
+                            </label>
+                            <div id="edit-subtasks-container"></div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-info text-dark fw-bold" id="btn-update-task">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+PARTIAL_TEMPLATE = """
+<!-- Schedule Structure Table (Today) -->
+<div class="card mb-4 shadow-sm">
+    <div class="card-header fw-bold text-uppercase text-secondary fs-6 d-flex justify-content-between align-items-center">
+        <span>Today's Schedule Structure</span>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-secondary">{{ data.today|length }} Tasks Total</span>
+            {% if data.today|length > 10 %}
+            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#todayCollapse">
+                Toggle All
+            </button>
+            {% endif %}
+            <button class="btn btn-sm btn-info text-dark fw-bold px-2" type="button" data-bs-toggle="modal" data-bs-target="#addTaskModal">
+                ＋ Task
+            </button>
+        </div>
+    </div>
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-dark table-hover m-0 align-middle">
@@ -383,6 +550,17 @@ PARTIAL_TEMPLATE = """
                             <td class="align-top text-end">
                                 {% if 'focus' in t.tags %}
                                 <div class="btn-group btn-group-sm">
+                                    <button 
+                                        data-raw="{{ t.raw|forceescape }}"
+                                        data-title="{{ t.title|forceescape }}"
+                                        data-symbol="{{ t.symbol }}"
+                                        data-date="{{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.today_iso }}"
+                                        data-tags="{{ t.tags|join(' ') }}"
+                                        data-subtasks='{{ t.subtasks|tojson }}'
+                                        class="btn btn-dark text-info border-info btn-edit-task"
+                                        data-bs-toggle="tooltip"
+                                        data-bs-placement="top"
+                                        title="Edit task">✏️</button>
                                     {% if t.time %}
                                     <button 
                                         <!-- Inside PARTIAL_TEMPLATE action group -->
@@ -730,6 +908,62 @@ def delete_task():
         return jsonify({"status": "error"}), 400
 
     delete_line(str(TASK_FILE), raw_line)
+    return jsonify({"status": "ok"})
+
+@app.route("/edit_task", methods=["POST"])
+def edit_task():
+    req_data = request.get_json() or {}
+    old_raw = req_data.get("old_raw")
+    symbol = req_data.get("symbol", "*")
+    description = req_data.get("description", "").strip()
+    tags = req_data.get("tags", [])
+    subtasks = req_data.get("subtasks", [])
+    selected_date_str = req_data.get("date")
+
+    if not old_raw or not description or not TASK_FILE.exists():
+        return jsonify({"status": "error", "message": "Missing required fields"}), 400
+
+    if selected_date_str:
+        try:
+            target_dt = datetime.strptime(selected_date_str, "%Y-%m-%d")
+        except ValueError:
+            target_dt = datetime.now()
+    else:
+        target_dt = datetime.now()
+
+    date_shorthand = f"{target_dt.month}/{target_dt.day}"
+
+    formatted_tags = " ".join([f"#{t.strip('#')}" for t in tags if t.strip()])
+    new_parent_line = f"{symbol} {date_shorthand} {description}"
+    if formatted_tags:
+        new_parent_line += f" {formatted_tags}"
+
+    new_block = [new_parent_line]
+    for sub in subtasks:
+        sub_clean = sub.strip()
+        if sub_clean:
+            new_block.append(f"  * {sub_clean}")
+
+    lines = TASK_FILE.read_text().splitlines()
+    new_lines = []
+    replacing = False
+    target_clean = html.unescape(old_raw).strip()
+
+    for line in lines:
+        if line.strip().lower() == target_clean.lower():
+            replacing = True
+            new_lines.extend(new_block)
+            continue
+
+        if replacing:
+            if line.startswith(" ") or line.startswith("\t"):
+                continue
+            else:
+                replacing = False
+
+        new_lines.append(line)
+
+    TASK_FILE.write_text("\n".join(new_lines) + "\n")
     return jsonify({"status": "ok"})
 
 @app.route("/export_ics", methods=["GET"])

@@ -58,6 +58,36 @@ def test_complete_daily_task_with_html_escaped_payload(tmp_path):
     assert f"- {tomorrow_str} Check for ripe figs & herbs #Daily" in content
     assert "x - 10/17 Check for ripe figs & herbs #Daily" in content
 
+def test_complete_monthly_task(tmp_path):
+    task_file = tmp_path / "tasks.txt"
+    task_file.write_text("* 10/18 Pay mortgage #Monthly #focus\n\n# Done\n")
+
+    complete_task(str(task_file), "* 10/18 Pay mortgage #Monthly #focus")
+
+    content = task_file.read_text()
+    # Expect 1 month later (11/18)
+    assert "* 11/18 Pay mortgage #Monthly" in content
+    assert "x * 10/18 Pay mortgage #Monthly" in content
+
+def test_complete_nth_weekday_task(tmp_path, monkeypatch):
+    # Simulate current date as 3rd Sunday of October 2026 (2026-10-18)
+    oct_18_2026 = datetime(2026, 10, 18)
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls):
+            return oct_18_2026
+
+    monkeypatch.setattr("utils.board_etl.datetime", FixedDatetime)
+
+    task_file = tmp_path / "tasks.txt"
+    task_file.write_text("* 10/18 Board sync #3rd-Sunday #focus\n\n# Done\n")
+
+    complete_task(str(task_file), "* 10/18 Board sync #3rd-Sunday #focus")
+
+    content = task_file.read_text()
+    # 3rd Sunday of November 2026 is 11/15
+    assert "* 11/15 Board sync #3rd-Sunday" in content
+
 def test_complete_task_end_to_end_daily(tmp_path):
     task_file = tmp_path / "tasks.txt"
     # Exact file contents as used in live testing

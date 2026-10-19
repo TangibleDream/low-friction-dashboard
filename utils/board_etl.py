@@ -1,3 +1,4 @@
+import calendar
 import html
 import re
 from datetime import datetime, timedelta
@@ -8,78 +9,6 @@ from rich.table import Table
 from rich.columns import Columns
 
 console = Console()
-
-def render_dashboard(data):
-    """Renders a Rich terminal view of today's schedule structure and task panels."""
-    if isinstance(data, dict):
-        tasks = data.get("today", [])
-        future = data.get("future", [])
-    else:
-        tasks = data
-        future = []
-
-    console.clear()
-    console.print(Panel("[bold cyan]ADHD Executive Focus Engine[/bold cyan]", expand=False))
-
-    timeline_table = Table(title="[bold]Today's Schedule Structure[/bold]", show_header=True, header_style="bold magenta")
-    timeline_table.add_column("Type", style="dim", width=12)
-    timeline_table.add_column("Time / Date", width=18)
-    timeline_table.add_column("Context", width=12)
-    timeline_table.add_column("Task")
-
-    for t in tasks:
-        ctx_str = f"@{t['contexts'][0]}" if t['contexts'] else ""
-        task_display = f"[bold]{t['title']}[/bold]" if t['symbol'] == '!' else t['title']
-        if t['subtasks']:
-            for sub in t['subtasks']:
-                task_display += f"\n  [dim]↳ {sub}[/dim]"
-
-        if t['symbol'] == '!':
-            timeline_table.add_row("[bold red]STRONG[/bold red]", t['time'] or "Today", ctx_str, task_display)
-        elif t['symbol'] == '?':
-            timeline_table.add_row("[dim yellow]ARBITRARY[/dim yellow]", t['time'] or "Flexible", ctx_str, f"[italic dim]{task_display}[/italic dim]")
-        elif t['symbol'] == '*':
-            timeline_table.add_row("[cyan]FLUID[/cyan]", t['time'] or "Flexible", ctx_str, task_display)
-
-    quick_tasks = [f"• {t['title']}" for t in tasks if 'quick' in t['tags'] or 'low_energy' in t['tags']]
-    waiting_tasks = [
-        f"• {t['title']} [dim]({' '.join(f'#{tag}' for tag in t['tags'])})[/dim]"
-        for t in tasks if any(tag == 'wait' or tag.startswith('wait:') for tag in t['tags'])
-    ]
-
-    quick_panel = Panel(
-        "\n".join(quick_tasks) if quick_tasks else "[dim]None logged[/dim]",
-        title="⚡ Low-Hanging Fruit (<15m / Low Energy)",
-        border_style="green"
-    )
-    
-    waiting_panel = Panel(
-        "\n".join(waiting_tasks) if waiting_tasks else "[dim]None logged[/dim]",
-        title="⏳ Gap Fillers (While Waiting on Main Task)",
-        border_style="yellow"
-    )
-
-    console.print(timeline_table)
-    if future:
-        future_text = "\n".join(f"• [{t['time'] or 'Future'}] {t['title']}" for t in future[:3])
-        if len(future) > 3:
-            future_text += f"\n[dim]...and {len(future) - 3} more[/dim]"
-        console.print(Panel(future_text, title=f"📅 Future Tasks ({len(future)} Scheduled)", border_style="cyan"))
-
-    console.print(Columns([quick_panel, waiting_panel]))
-
-def insert_date_at_front(raw_line: str, date_str: str) -> str:
-    """
-    Inserts date_str right after the task symbol (!, *, ?), or at the beginning 
-    if no symbol is present.
-    Example: "* Dry Whites" -> "* 10/17 Dry Whites"
-    """
-    stripped = raw_line.strip()
-    if stripped and stripped[0] in "!*?":
-        symbol = stripped[0]
-        content = stripped[1:].strip()
-        return f"{symbol} {date_str} {content}"
-    return f"{date_str} {stripped}"# utils/board_etl.py
 
 def complete_task(file_path: str, raw_line: str) -> None:
     path = Path(file_path)
@@ -96,22 +25,37 @@ def complete_task(file_path: str, raw_line: str) -> None:
 
     target_clean = html.unescape(raw_line).strip()
 
-    # Determine recurrence days offset
-    days_offset = None
-    if re.search(r'#weekdays\b', target_clean, re.IGNORECASE):
-        current_weekday = now.weekday()  # Monday=0, Tuesday=1, ... Friday=4, Saturday=5, Sunday=6
-        if current_weekday == 4:    # Friday -> 3 days to Monday
-            days_offset = 3
-        elif current_weekday == 5:  # Saturday -> 2 days to Monday
-            days_offset = 2
-        else:                       # Sunday (6) thru Thursday (3) -> 1 day
-            days_offset = 1
+    # Determine recurrence target date
+    next_dt = None
+
+    # Check #nth-weekday pattern (e.g. #1st-Monday, #3rd-Sunday, #4th-Thursday)
+    nth_match = re.search(r'#(1st|2nd|3rd|4th|5th)-(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b', target_clean, re.IGNORECASE)
+    
+    if nth_match:
+        ord_map = {"1st": 1, "2nd": 2, "3rd": 3, "4th": 4, "5th": 5}
+        wday_map = {
+            "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+            "friday": 4, "saturday": 5, "sunday": 6
+        }
+        ordinal = ord_map[nth_match.group(1).lower()]
+        target_wday = wday_map[nth_match.group(2).lower()]
+        next_dt = get_nth_weekday_of_next_month(now, ordinal, target_wday)
+
+    elif re.search(r'#monthly\b', target_clean, re.IGNORECASE):
+        next_dt = get_next_month_date(now)
+
+    elif re.search(r'#weekdays\b', target_clean, re.IGNORECASE):
+        current_wday = now.weekday()
+        days_offset = 3 if current_wday == 4 else (2 if current_wday == 5 else 1)
+        next_dt = now + timedelta(days=days_offset)
+
     elif re.search(r'#daily\b', target_clean, re.IGNORECASE):
-        days_offset = 1
+        next_dt = now + timedelta(days=1)
+
     else:
         x_days_match = re.search(r'#(\d+)-days?\b', target_clean, re.IGNORECASE)
         if x_days_match:
-            days_offset = int(x_days_match.group(1))
+            next_dt = now + timedelta(days=int(x_days_match.group(1)))
 
     # Strip #focus case-insensitively
     clean_target = re.sub(r'\s*#focus\b', '', target_clean, flags=re.IGNORECASE)
@@ -135,10 +79,9 @@ def complete_task(file_path: str, raw_line: str) -> None:
 
         new_lines.append(line)
 
-    # Build recurring copy for next scheduled date
+    # Build recurring copy for calculated target date
     recurring_block = []
-    if days_offset is not None and completed_block:
-        next_dt = now + timedelta(days=days_offset)
+    if next_dt is not None and completed_block:
         next_date_str = f"{next_dt.month}/{next_dt.day}"
 
         recurring_line = clean_target
@@ -199,6 +142,45 @@ def delete_line(file_path: str, raw_line: str) -> None:
         new_lines.append(line)
 
     path.write_text("\n".join(new_lines) + "\n")
+
+def get_next_month_date(base_date: datetime) -> datetime:
+    """Calculates the same calendar day in the following month (handling month-end overflows)."""
+    month = base_date.month % 12 + 1
+    year = base_date.year + (base_date.month // 12)
+    max_days = calendar.monthrange(year, month)[1]
+    day = min(base_date.day, max_days)
+    return datetime(year, month, day)
+
+def get_nth_weekday_of_next_month(base_date: datetime, ordinal: int, target_weekday: int) -> datetime:
+    """
+    Finds the Nth occurrence (1-5) of target_weekday (0=Monday..6=Sunday) in the next month.
+    If the 5th occurrence doesn't exist, falls back to the final matching weekday of that month.
+    """
+    next_m = base_date.month % 12 + 1
+    year = base_date.year + (base_date.month // 12)
+    
+    # Collect all matching weekdays in the target month
+    cal = calendar.Calendar(firstweekday=0)
+    matching_days = [
+        day for day, wday in cal.itermonthdays2(year, next_m)
+        if day != 0 and wday == target_weekday
+    ]
+    
+    target_day = matching_days[ordinal - 1] if len(matching_days) >= ordinal else matching_days[-1]
+    return datetime(year, next_m, target_day)
+
+def insert_date_at_front(raw_line: str, date_str: str) -> str:
+    """
+    Inserts date_str right after the task symbol (!, *, ?), or at the beginning 
+    if no symbol is present.
+    Example: "* Dry Whites" -> "* 10/17 Dry Whites"
+    """
+    stripped = raw_line.strip()
+    if stripped and stripped[0] in "!*?":
+        symbol = stripped[0]
+        content = stripped[1:].strip()
+        return f"{symbol} {date_str} {content}"
+    return f"{date_str} {stripped}"# utils/board_etl.py
 
 def make_line_today(raw_line: str) -> str:
     now = datetime.now()
@@ -389,6 +371,65 @@ def parse_tasks(file_path: str):
         "completed": completed_tasks,
         "all_tags": sorted(list(all_tags))
     }
+
+def render_dashboard(data):
+    """Renders a Rich terminal view of today's schedule structure and task panels."""
+    if isinstance(data, dict):
+        tasks = data.get("today", [])
+        future = data.get("future", [])
+    else:
+        tasks = data
+        future = []
+
+    console.clear()
+    console.print(Panel("[bold cyan]ADHD Executive Focus Engine[/bold cyan]", expand=False))
+
+    timeline_table = Table(title="[bold]Today's Schedule Structure[/bold]", show_header=True, header_style="bold magenta")
+    timeline_table.add_column("Type", style="dim", width=12)
+    timeline_table.add_column("Time / Date", width=18)
+    timeline_table.add_column("Context", width=12)
+    timeline_table.add_column("Task")
+
+    for t in tasks:
+        ctx_str = f"@{t['contexts'][0]}" if t['contexts'] else ""
+        task_display = f"[bold]{t['title']}[/bold]" if t['symbol'] == '!' else t['title']
+        if t['subtasks']:
+            for sub in t['subtasks']:
+                task_display += f"\n  [dim]↳ {sub}[/dim]"
+
+        if t['symbol'] == '!':
+            timeline_table.add_row("[bold red]STRONG[/bold red]", t['time'] or "Today", ctx_str, task_display)
+        elif t['symbol'] == '?':
+            timeline_table.add_row("[dim yellow]ARBITRARY[/dim yellow]", t['time'] or "Flexible", ctx_str, f"[italic dim]{task_display}[/italic dim]")
+        elif t['symbol'] == '*':
+            timeline_table.add_row("[cyan]FLUID[/cyan]", t['time'] or "Flexible", ctx_str, task_display)
+
+    quick_tasks = [f"• {t['title']}" for t in tasks if 'quick' in t['tags'] or 'low_energy' in t['tags']]
+    waiting_tasks = [
+        f"• {t['title']} [dim]({' '.join(f'#{tag}' for tag in t['tags'])})[/dim]"
+        for t in tasks if any(tag == 'wait' or tag.startswith('wait:') for tag in t['tags'])
+    ]
+
+    quick_panel = Panel(
+        "\n".join(quick_tasks) if quick_tasks else "[dim]None logged[/dim]",
+        title="⚡ Low-Hanging Fruit (<15m / Low Energy)",
+        border_style="green"
+    )
+    
+    waiting_panel = Panel(
+        "\n".join(waiting_tasks) if waiting_tasks else "[dim]None logged[/dim]",
+        title="⏳ Gap Fillers (While Waiting on Main Task)",
+        border_style="yellow"
+    )
+
+    console.print(timeline_table)
+    if future:
+        future_text = "\n".join(f"• [{t['time'] or 'Future'}] {t['title']}" for t in future[:3])
+        if len(future) > 3:
+            future_text += f"\n[dim]...and {len(future) - 3} more[/dim]"
+        console.print(Panel(future_text, title=f"📅 Future Tasks ({len(future)} Scheduled)", border_style="cyan"))
+
+    console.print(Columns([quick_panel, waiting_panel]))
 
 def shift_line_to_tomorrow(raw_line: str) -> str:
     now = datetime.now()

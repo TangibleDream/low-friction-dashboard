@@ -83,6 +83,27 @@ Execute the full unit test and BDD test suite:
 ```
 pytest
 ```
+
+## Recurring Task Engine
+
+The task engine automatically spawns a future-dated copy of any task completed in the UI when tagged with a recurrence rule. Completed instances are logged under `# Done` while their recurring counterpart is scheduled forward.
+
+### Supported Recurrence Tags
+
+| Tag | Recurrence Rule | Example | Next Date (if completed 10/18) |
+| :--- | :--- | :--- | :--- |
+| `#Daily` | Spawns task for tomorrow | `* Walk 11K steps #Daily` | `10/19` |
+| `#Weekdays` | Spawns for tomorrow (Mon–Thu) or next Monday (Fri–Sat) | `* Submit status report #Weekdays` | `10/19` (from Sun) / `10/26` (from Fri) |
+| `#X-Days` | Spawns $X$ days into the future | `* Clean water filter #14-Days` | `11/01` |
+| `#Monthly` | Spawns exactly 1 month ahead | `* Pay rent #Monthly` | `11/18` |
+| `#<Nth>-<Weekday>` | Spawns for the $N^{\text{th}}$ ordinal weekday of next month | `* Board meeting #3rd-Sunday` | `11/15` |
+
+#### Ordinal Weekday Formats
+- **Ordinals:** `#1st`, `#2nd`, `#3rd`, `#4th`, `#5th`
+- **Weekdays:** `-Monday`, `-Tuesday`, `-Wednesday`, `-Thursday`, `-Friday`, `-Saturday`, `-Sunday`
+- **Examples:** `#1st-Monday`, `#2nd-Friday`, `#3rd-Sunday`, `#4th-Thursday`
+---
+
 📝 Syntax Reference for `tasks.txt`
 
  |Symbol / Tag|Meaning|Example|
@@ -92,3 +113,4 @@ pytest
  |?|Arbitrary / Optional|? Explore 48-TET microtonal tuning| 
  |#priority|Anchors task to top of active schedule|* 10/16 Prepare presentation #priority|
  |#focus|Marks task as currently selected|! 10/16 Write documentation #focus|
+ |@context|Context tag|(e.g., `@home`, `@admin`, `@logistics`)|

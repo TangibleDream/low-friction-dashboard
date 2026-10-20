@@ -76,6 +76,49 @@ def test_complete_monthly_task(tmp_path):
     assert f"* {expected_next_str} Pay mortgage #Monthly" in content
     assert f"x * {today_str} Pay mortgage #Monthly" in content
 
+# tests/test_etl.py
+import pytest
+from datetime import datetime
+
+def test_complete_not_sunday_task_midweek(tmp_path, monkeypatch):
+    # Simulate current day as Wednesday (2026-10-21)
+    wednesday = datetime(2026, 10, 21)
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls):
+            return wednesday
+
+    monkeypatch.setattr("utils.board_etl.datetime", FixedDatetime)
+
+    task_file = tmp_path / "tasks.txt"
+    task_file.write_text("* 10/21 Daily routine #Not-Sunday #focus\n\n# Done\n")
+
+    complete_task(str(task_file), "* 10/21 Daily routine #Not-Sunday #focus")
+
+    content = task_file.read_text()
+    # On Wednesday, next instance should be Thursday (10/22)
+    assert "* 10/22 Daily routine #Not-Sunday" in content
+
+
+def test_complete_not_sunday_task_saturday(tmp_path, monkeypatch):
+    # Simulate current day as Saturday (2026-10-24)
+    saturday = datetime(2026, 10, 24)
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls):
+            return saturday
+
+    monkeypatch.setattr("utils.board_etl.datetime", FixedDatetime)
+
+    task_file = tmp_path / "tasks.txt"
+    task_file.write_text("* 10/24 Daily routine #Not-Sunday #focus\n\n# Done\n")
+
+    complete_task(str(task_file), "* 10/24 Daily routine #Not-Sunday #focus")
+
+    content = task_file.read_text()
+    # On Saturday, next instance should skip Sunday (10/25) to Monday (10/26)
+    assert "* 10/26 Daily routine #Not-Sunday" in content
+    
 def test_complete_nth_weekday_task(tmp_path, monkeypatch):
     # Simulate current date as 3rd Sunday of October 2026 (2026-10-18)
     oct_18_2026 = datetime(2026, 10, 18)

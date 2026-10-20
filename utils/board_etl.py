@@ -28,10 +28,35 @@ def complete_task(file_path: str, raw_line: str) -> None:
     # Determine recurrence target date
     next_dt = None
 
-    # Check #nth-weekday pattern (e.g. #1st-Monday, #3rd-Sunday, #4th-Thursday)
-    nth_match = re.search(r'#(1st|2nd|3rd|4th|5th)-(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b', target_clean, re.IGNORECASE)
-    
-    if nth_match:
+    # 1. Check #not-<weekday> (e.g. #Not-Sunday, #Not-Friday)
+    not_wday_match = re.search(
+        r'#not-(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b', 
+        target_clean, 
+        re.IGNORECASE
+    )
+
+    if not_wday_match:
+        wday_map = {
+            "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+            "friday": 4, "saturday": 5, "sunday": 6
+        }
+        excluded_wday = wday_map[not_wday_match.group(1).lower()]
+        candidate_dt = now + timedelta(days=1)
+        if candidate_dt.weekday() == excluded_wday:
+            candidate_dt += timedelta(days=1)
+        next_dt = candidate_dt
+
+    # 2. Check #nth-weekday pattern (e.g. #1st-Monday, #3rd-Sunday)
+    elif re.search(
+        r'#(1st|2nd|3rd|4th|5th)-(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b', 
+        target_clean, 
+        re.IGNORECASE
+    ):
+        nth_match = re.search(
+            r'#(1st|2nd|3rd|4th|5th)-(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b', 
+            target_clean, 
+            re.IGNORECASE
+        )
         ord_map = {"1st": 1, "2nd": 2, "3rd": 3, "4th": 4, "5th": 5}
         wday_map = {
             "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
@@ -41,17 +66,21 @@ def complete_task(file_path: str, raw_line: str) -> None:
         target_wday = wday_map[nth_match.group(2).lower()]
         next_dt = get_nth_weekday_of_next_month(now, ordinal, target_wday)
 
+    # 3. Check #monthly
     elif re.search(r'#monthly\b', target_clean, re.IGNORECASE):
         next_dt = get_next_month_date(now)
 
+    # 4. Check #weekdays
     elif re.search(r'#weekdays\b', target_clean, re.IGNORECASE):
         current_wday = now.weekday()
         days_offset = 3 if current_wday == 4 else (2 if current_wday == 5 else 1)
         next_dt = now + timedelta(days=days_offset)
 
+    # 5. Check #daily
     elif re.search(r'#daily\b', target_clean, re.IGNORECASE):
         next_dt = now + timedelta(days=1)
 
+    # 6. Check #X-days
     else:
         x_days_match = re.search(r'#(\d+)-days?\b', target_clean, re.IGNORECASE)
         if x_days_match:

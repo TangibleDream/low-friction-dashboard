@@ -114,3 +114,4 @@ The task engine automatically spawns a future-dated copy of any task completed i
  |#priority|Anchors task to top of active schedule|* 10/16 Prepare presentation #priority|
  |#focus|Marks task as currently selected|! 10/16 Write documentation #focus|
  |@context|Context tag|(e.g., `@home`, `@admin`, `@logistics`)|
+ | `#Not-<Weekday>` | Spawns daily, skipping the specified off-day | `* Daily routine #Not-Sunday` | `10/26` (if completed Sat 10/24) |

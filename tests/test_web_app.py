@@ -108,6 +108,26 @@ def test_complete_subtask_with_single_quote(client):
     assert "# Done" in file_content
     assert f"x * {today_str} 6 guitar net 2 pieces @skill-building" in file_content
 
+def test_edit_future_task_route(client):
+    test_client, test_file = client
+    test_file.write_text("* 11/15 Board sync @admin #3rd-Sunday\n\n# Done\n")
+
+    response = test_client.post('/edit_task', json={
+        "old_raw": "* 11/15 Board sync @admin #3rd-Sunday",
+        "date": "2026-11-22",
+        "symbol": "!",
+        "description": "Executive Board sync",
+        "tags": ["admin", "4th-Sunday"],
+        "subtasks": ["Review Q4 metrics"]
+    })
+
+    assert response.status_code == 200
+
+    content = test_file.read_text()
+    assert "Board sync @admin" not in content
+    assert "! 11/22 Executive Board sync #admin #4th-Sunday" in content
+    assert "  * Review Q4 metrics" in content
+    
 def test_edit_task_route(client):
     test_client, test_file = client
     test_file.write_text("* 10/19 Old description @admin #focus\n\n# Done\n")

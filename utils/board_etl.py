@@ -345,18 +345,23 @@ def parse_tasks(file_path: str):
             date_str = date_match.group(1) if date_match else None
 
             contexts = re.findall(r'@([\w-]+)', content)
-            tags = re.findall(r'#([\w-]+(?::[\w-]+)?)', content)
-            
+            raw_tags = re.findall(r'#([\w-]+(?::[\w-]+)?)', content)
+            tags = [t.lower() for t in raw_tags]
+
+            contexts = re.findall(r'@([\w-]+)', content)
+
             clean_title = content
             if time_str:
                 clean_title = clean_title.replace(time_str, '')
             elif date_str:
                 clean_title = clean_title.replace(date_str, '')
-                
+
+            # Strip contexts and tags case-insensitively
             for c in contexts:
-                clean_title = clean_title.replace(f'@{c}', '')
-            for t in tags:
-                clean_title = clean_title.replace(f'#{t}', '')
+                clean_title = re.sub(rf'@{re.escape(c)}\b', '', clean_title, flags=re.IGNORECASE)
+            for t in raw_tags:
+                clean_title = re.sub(rf'#{re.escape(t)}\b', '', clean_title, flags=re.IGNORECASE)
+
             clean_title = re.sub(r'\s+', ' ', clean_title).strip()
 
             current_task = {
@@ -378,9 +383,10 @@ def parse_tasks(file_path: str):
     future_tasks.sort(key=lambda t: t['parsed_date'] or datetime.max)
 
     def get_task_sort_key(t):
-        if 'priority' in t['tags']:
+        lower_tags = [tag.lower() for tag in t.get('tags', [])]
+        if 'priority' in lower_tags:
             return 0
-        if 'focus' in t['tags']:
+        if 'focus' in lower_tags:
             return 1
         return 2
 

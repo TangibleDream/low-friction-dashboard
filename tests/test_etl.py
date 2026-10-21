@@ -11,6 +11,19 @@ from utils.board_etl import (
     shift_line_to_tomorrow,
     toggle_line_focus,
 )
+def test_capitalized_priority_tag_sorting(tmp_path):
+    task_file = tmp_path / "tasks.txt"
+    task_file.write_text(
+        "* 10/21 Cut pokeweed\n"
+        "* 10/21 Marnie Grow @Fooda #Priority\n"
+    )
+
+    data = parse_tasks(str(task_file))
+    
+    # Assert #Priority item rises to index 0 and contexts/tags are cleaned from title
+    assert data["today"][0]["title"] == "Marnie Grow"
+    assert "priority" in data["today"][0]["tags"]
+
 def test_complete_capitalized_daily_recurring_task(tmp_path):
     task_file = tmp_path / "tasks.txt"
     task_file.write_text("! 10/17 10:00 Walk 11K steps #Daily #focus\n\n# Done\n")
@@ -76,10 +89,6 @@ def test_complete_monthly_task(tmp_path):
     assert f"* {expected_next_str} Pay mortgage #Monthly" in content
     assert f"x * {today_str} Pay mortgage #Monthly" in content
 
-# tests/test_etl.py
-import pytest
-from datetime import datetime
-
 def test_complete_not_sunday_task_midweek(tmp_path, monkeypatch):
     # Simulate current day as Wednesday (2026-10-21)
     wednesday = datetime(2026, 10, 21)
@@ -98,7 +107,6 @@ def test_complete_not_sunday_task_midweek(tmp_path, monkeypatch):
     content = task_file.read_text()
     # On Wednesday, next instance should be Thursday (10/22)
     assert "* 10/22 Daily routine #Not-Sunday" in content
-
 
 def test_complete_not_sunday_task_saturday(tmp_path, monkeypatch):
     # Simulate current day as Saturday (2026-10-24)

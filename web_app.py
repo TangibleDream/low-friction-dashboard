@@ -281,7 +281,9 @@ HTML_TEMPLATE = r"""
                 }
 
                 const tags = rawTags ? rawTags.split(/\s+/).map(t => t.replace(/^#/, '')) : [];
-                const subtaskInputs = document.querySelectorAll('.subtask-input');
+                
+                // Scope selector strictly to #subtasks-container to avoid pulling from #edit-subtasks-container
+                const subtaskInputs = document.querySelectorAll('#subtasks-container .subtask-input');
                 const subtasks = Array.from(subtaskInputs)
                     .map(input => input.value.trim())
                     .filter(val => val.length > 0);
@@ -297,6 +299,7 @@ HTML_TEMPLATE = r"""
                         if (modal) modal.hide();
                         document.getElementById('create-task-form').reset();
                         
+                        // Clear and reset subtask rows
                         document.getElementById('subtasks-container').innerHTML = `
                             <div class="input-group input-group-sm mb-1 subtask-row">
                                 <span class="input-group-text bg-dark border-secondary text-secondary">↳</span>
@@ -306,6 +309,25 @@ HTML_TEMPLATE = r"""
                         `;
                     }
                 });
+            }
+        });
+
+        // Ensure create modal always opens with clean default state
+        document.addEventListener('show.bs.modal', function(e) {
+            if (e.target && e.target.id === 'addTaskModal') {
+                const form = document.getElementById('create-task-form');
+                if (form) form.reset();
+
+                const container = document.getElementById('subtasks-container');
+                if (container) {
+                    container.innerHTML = `
+                        <div class="input-group input-group-sm mb-1 subtask-row">
+                            <span class="input-group-text bg-dark border-secondary text-secondary">↳</span>
+                            <input type="text" class="form-control bg-dark text-light border-secondary subtask-input" placeholder="Subtask description">
+                            <button type="button" class="btn btn-outline-danger btn-remove-subtask">✕</button>
+                        </div>
+                    `;
+                }
             }
         });
         document.addEventListener('click', function(e) {

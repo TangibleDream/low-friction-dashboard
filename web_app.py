@@ -723,9 +723,11 @@ PARTIAL_TEMPLATE = """
 <div class="card mb-4 border-info shadow-sm">
     <div class="card-header bg-dark text-info fw-bold d-flex justify-content-between align-items-center">
         <span>📅 Future Scheduled Tasks ({{ data.future|length }} Total)</span>
+        {% if data.future|length > 3 %}
         <button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="collapse" data-bs-target="#futureCollapse">
             Toggle All {{ data.future|length }} Items
         </button>
+        {% endif %}
     </div>
     <div class="card-body p-0">
         <ul class="list-group list-group-flush border-bottom border-secondary">
@@ -735,10 +737,26 @@ PARTIAL_TEMPLATE = """
                         <span class="badge bg-info text-dark me-2">{{ t.time }}</span>
                         <span class="fw-semibold">{{ t.title }}</span>
                         {% if t.contexts %}<span class="badge bg-secondary ms-2">@{{ t.contexts[0] }}</span>{% endif %}
+                        {% for tag in t.tags %}
+                            <span class="badge bg-dark border border-secondary text-light ms-1">#{{ tag }}</span>
+                        {% endfor %}
                     </div>
-                    <button 
-                        data-raw="{{ t.raw|forceescape }}" 
-                        class="btn btn-sm btn-outline-info btn-make-today">📌 Today</button>
+                    <div class="btn-group btn-group-sm">
+                        <button 
+                            data-raw="{{ t.raw|forceescape }}"
+                            data-title="{{ t.title|forceescape }}"
+                            data-symbol="{{ t.symbol }}"
+                            data-date="{{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.today_iso }}"
+                            data-tags="{{ t.tags|join(' ') }}"
+                            data-subtasks='{{ t.subtasks|tojson }}'
+                            class="btn btn-dark text-info border-info btn-edit-task"
+                            data-bs-toggle="tooltip"
+                            data-bs-placement="top"
+                            title="Edit task">✏️</button>
+                        <button 
+                            data-raw="{{ t.raw|forceescape }}" 
+                            class="btn btn-outline-info btn-make-today">📌 Today</button>
+                    </div>
                 </li>
             {% endfor %}
         </ul>
@@ -752,10 +770,26 @@ PARTIAL_TEMPLATE = """
                             <span class="badge bg-secondary me-2">{{ t.time }}</span>
                             <span>{{ t.title }}</span>
                             {% if t.contexts %}<span class="badge bg-secondary ms-2">@{{ t.contexts[0] }}</span>{% endif %}
+                            {% for tag in t.tags %}
+                                <span class="badge bg-dark border border-secondary text-light ms-1">#{{ tag }}</span>
+                            {% endfor %}
                         </div>
-                        <button 
-                            data-raw="{{ t.raw|forceescape }}" 
-                            class="btn btn-sm btn-outline-info btn-make-today">📌 Today</button>
+                        <div class="btn-group btn-group-sm">
+                            <button 
+                                data-raw="{{ t.raw|forceescape }}"
+                                data-title="{{ t.title|forceescape }}"
+                                data-symbol="{{ t.symbol }}"
+                                data-date="{{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.today_iso }}"
+                                data-tags="{{ t.tags|join(' ') }}"
+                                data-subtasks='{{ t.subtasks|tojson }}'
+                                class="btn btn-dark text-info border-info btn-edit-task"
+                                data-bs-toggle="tooltip"
+                                data-bs-placement="top"
+                                title="Edit task">✏️</button>
+                            <button 
+                                data-raw="{{ t.raw|forceescape }}" 
+                                class="btn btn-outline-info btn-make-today">📌 Today</button>
+                        </div>
                     </li>
                 {% endfor %}
             </ul>

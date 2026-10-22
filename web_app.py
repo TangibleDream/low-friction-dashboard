@@ -312,11 +312,21 @@ HTML_TEMPLATE = r"""
             }
         });
 
-        // Ensure create modal always opens with clean default state
+        // Ensure create modal always opens with clean default state and today's date
         document.addEventListener('show.bs.modal', function(e) {
             if (e.target && e.target.id === 'addTaskModal') {
                 const form = document.getElementById('create-task-form');
                 if (form) form.reset();
+
+                // Default the date field to today (YYYY-MM-DD)
+                const dateInput = document.getElementById('task-date');
+                if (dateInput) {
+                    const today = new Date();
+                    const year = today.getFullYear();
+                    const month = String(today.getMonth() + 1).padStart(2, '0');
+                    const day = String(today.getDate()).padStart(2, '0');
+                    dateInput.value = `${year}-${month}-${day}`;
+                }
 
                 const container = document.getElementById('subtasks-container');
                 if (container) {

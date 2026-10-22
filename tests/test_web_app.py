@@ -20,6 +20,23 @@ def client(tmp_path, monkeypatch):
     with web_app.app.test_client() as test_client:
         yield test_client, test_file
 
+def test_add_task_defaults_to_today_when_date_omitted(client):
+    test_client, test_file = client
+
+    response = test_client.post('/add_task', json={
+        "symbol": "*",
+        "description": "Inspect garden soil",
+        "tags": ["home"]
+    })
+
+    assert response.status_code == 200
+
+    content = test_file.read_text()
+    today_dt = datetime.now()
+    today_str = f"{today_dt.month}/{today_dt.day}"
+
+    assert f"* {today_str} Inspect garden soil #home" in content
+    
 def test_add_task_does_not_leak_subtasks_from_edit_modal(client):
     test_client, test_file = client
 

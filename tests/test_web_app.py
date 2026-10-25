@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime
+from datetime import datetime, timedelta
 from utils.board_etl import complete_task
 
 today_str = f"{datetime.now().month}/{datetime.now().day}"
@@ -199,6 +199,20 @@ def test_long_task_description_and_subtasks_have_truncation_classes(client):
     assert 'task-title-cell' in html
     assert 'subtask-text-container' in html
     assert 'action-cell' in html
+
+def test_partial_endpoint_serves_fresh_day_data(client):
+    test_client, test_file = client
+    now = datetime.now()
+    today_str = f"{now.month}/{now.day}"
+
+    test_file.write_text(f"* {today_str} Morning routine #focus\n\n# Done\n")
+
+    response = test_client.get('/partial')
+    assert response.status_code == 200
+
+    html = response.get_data(as_text=True)
+    assert "Morning routine" in html
+    assert f"{now.month}/{now.day}" in html
 
 def test_render_obsidian_link_in_subtask(client):
     test_client, test_file = client

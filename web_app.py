@@ -34,6 +34,51 @@ HTML_TEMPLATE = r"""
         .badge-fluid { background-color: #06b6d4; }
         .badge-arbitrary { background-color: #f59e0b; color: #000; }
         .btn-complete { padding: 0.1rem 0.4rem; font-size: 0.75rem; border-radius: 0.25rem; }
+        /* Table Layout Locking */
+        .table-fixed {
+            table-layout: fixed;
+            width: 100%;
+        }
+
+        /* Ensure Type and Time cells never collapse or overflow */
+        .table-fixed td:first-child, 
+        .table-fixed td:nth-child(2) {
+            white-space: nowrap;
+            overflow: hidden;
+        }
+
+        /* Task Title Styling */
+        .task-title-cell {
+            word-break: break-word;
+            overflow-wrap: anywhere;
+        }
+
+        /* Subtask Container */
+        .subtask-text-container {
+            min-width: 0;
+            flex-grow: 1;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+        }
+
+        .subtask-action-container {
+            display: inline-flex;
+            align-items: center;
+            justify-content: flex-end;
+            min-width: 75px;
+        }
+
+        .btn-complete-subtask {
+            font-weight: 600;
+            line-height: 1.4;
+            transition: all 0.15s ease-in-out;
+        }
+
+        /* Give main action button group enough horizontal space */
+        .action-cell {
+            width: 350px !important;
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body class="text-light py-4">
@@ -518,15 +563,15 @@ PARTIAL_TEMPLATE = """
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-dark table-hover m-0 align-middle">
+            <table class="table table-dark table-hover m-0 align-middle table-fixed">
                 <thead>
                     <tr class="text-secondary">
                         <th style="width: 12%">Type</th>
-                        <th style="width: 18%">Time / Date</th>
-                        <th style="width: 12%">Context</th>
-                        <th>Task Description</th>
-                        <th>Tags</th>
-                        <th style="width: 12%" class="text-end">Action</th>
+                        <th style="width: 10%">Time / Date</th>
+                        <th style="width: 10%">Context</th>
+                        <th style="width: 30%">Task Description</th>
+                        <th style="width: 10%">Tags</th>
+                        <th style="width: 28%" class="action-cell text-end">Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -534,9 +579,9 @@ PARTIAL_TEMPLATE = """
                         <tr class="task-row {% if 'focus' in t.tags %}table-primary text-light fw-bold border-start border-4 border-info{% endif %}"
                             data-raw="{{ t.raw|forceescape }}"
                             style="cursor: pointer;">
-                            <td class="align-top">
+                            <td class="align-top" style="white-space: nowrap;">
                                 {% if 'focus' in t.tags %}
-                                    <span class="badge bg-info text-dark">🎯 IN FOCUS</span>
+                                    <span class="badge bg-info text-dark fw-bold px-2 py-1">🎯 IN FOCUS</span>
                                 {% elif t.symbol == '!' %}
                                     <span class="badge badge-strong">STRONG</span>
                                 {% elif t.symbol == '?' %}
@@ -545,28 +590,33 @@ PARTIAL_TEMPLATE = """
                                     <span class="badge badge-fluid">FLUID</span>
                                 {% endif %}
                             </td>
-                            <td class="text-info fw-semibold align-top">{{ t.time or 'Flexible' }}</td>
+                            <td class="text-info fw-semibold align-top" style="white-space: nowrap;">{{ t.time or 'Flexible' }}</td>
                             <td class="align-top">
                                 {% if t.contexts %}
                                     <span class="badge bg-secondary">@{{ t.contexts[0] }}</span>
                                 {% endif %}
                             </td>
-                            <td>
-                                <div class="{% if t.symbol == '?' %}text-muted fst-italic{% else %}fw-semibold{% endif %}">
-                                    {{ t.title }}
+                            <td class="align-top">
+                                <div class="task-title-cell {% if t.symbol == '?' %}text-muted fst-italic{% else %}fw-semibold{% endif %}">
+                                    {{ t.title | render_links | safe }}
                                 </div>
                                 {% if t.subtasks %}
-                                    <ul class="list-unstyled ms-3 mt-2 mb-0 small">
+                                    <ul class="list-unstyled ms-2 mt-2 mb-0 small">
                                         {% for sub in t.subtasks %}
-                                            <li class="d-flex align-items-center justify-content-between mb-1">
-                                                <span>
-                                                    <span class="{% if 'focus' in t.tags %}text-dark{% else %}text-secondary{% endif %}">↳</span> 
-                                                    <span class="{% if 'focus' in t.tags %}text-dark{% else %}text-muted{% endif %}">{{ sub }}</span>
+                                            <li class="d-flex justify-content-between align-items-center mb-1 pb-1 border-bottom border-secondary-subtle">
+                                                <span class="subtask-text-container me-3">
+                                                    <span class="{% if 'focus' in t.tags %}text-dark{% else %}text-secondary{% endif %} me-1">↳</span> 
+                                                    <span class="{% if 'focus' in t.tags %}text-dark{% else %}text-muted{% endif %}">{{ sub | render_links | safe }}</span>
                                                 </span>
-                                                <button 
-                                                    data-parent="{{ t.title|forceescape }}" 
-                                                    data-subtask="{{ sub|forceescape }}" 
-                                                    class="btn {% if 'focus' in t.tags %}btn-dark text-success border-success{% else %}btn-outline-success{% endif %} btn-complete btn-complete-subtask ms-2">✓ Done</button>
+                                                <div class="subtask-action-container flex-shrink-0">
+                                                    <button 
+                                                        data-parent="{{ t.title|forceescape }}" 
+                                                        data-subtask="{{ sub|forceescape }}" 
+                                                        class="btn btn-sm {% if 'focus' in t.tags %}btn-dark text-success border-success{% else %}btn-outline-success{% endif %} btn-complete-subtask py-0 px-2 fs-7"
+                                                        data-bs-toggle="tooltip"
+                                                        data-bs-placement="top"
+                                                        title="Complete subtask">✓ Done</button>
+                                                </div>
                                             </li>
                                         {% endfor %}
                                     </ul>
@@ -579,7 +629,7 @@ PARTIAL_TEMPLATE = """
                                     {% endif %}
                                 {% endfor %}
                             </td>
-                            <td class="align-top text-end">
+                            <td class="align-top action-cell text-end" style="white-space: nowrap;">
                                 {% if 'focus' in t.tags %}
                                 <div class="btn-group btn-group-sm">
                                     <button 
@@ -594,14 +644,12 @@ PARTIAL_TEMPLATE = """
                                         data-bs-placement="top"
                                         title="Edit task">✏️</button>
                                     {% if t.time %}
-                                    <button 
-                                        <!-- Inside PARTIAL_TEMPLATE action group -->
                                         <a 
                                             href="/export_ics?title={{ t.title|urlencode }}&date={{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.today_iso }}&time={{ t.time|urlencode if t.time else '' }}" 
                                             class="btn btn-dark text-info border-info"
                                             data-bs-toggle="tooltip"
                                             data-bs-placement="top"
-                                            title="Export to Outlook/iCal">📅 Add to Calendar</a>
+                                            title="Export to Outlook/iCal">📅</a>
                                     {% endif %}
 
                                     {% if 'priority' not in t.tags %}
@@ -615,11 +663,17 @@ PARTIAL_TEMPLATE = """
 
                                     <button 
                                         data-raw="{{ t.raw|forceescape }}" 
-                                        class="btn btn-dark text-warning border-warning btn-shift-task">➡️ Tomorrow</button>
+                                        class="btn btn-dark text-warning border-warning btn-shift-task"
+                                        data-bs-toggle="tooltip"
+                                        data-bs-placement="top"
+                                        title="Shift to tomorrow">➡️ Tomorrow</button>
 
                                     <button 
                                         data-raw="{{ t.raw|forceescape }}" 
-                                        class="btn btn-dark text-success border-success btn-complete-task">✓ Done</button>
+                                        class="btn btn-dark text-success border-success btn-complete-task"
+                                        data-bs-toggle="tooltip"
+                                        data-bs-placement="top"
+                                        title="Mark task completed">✓ Done</button>
 
                                     <button 
                                         type="button" 
@@ -661,22 +715,31 @@ PARTIAL_TEMPLATE = """
                                     <span class="badge bg-secondary">@{{ t.contexts[0] }}</span>
                                 {% endif %}
                             </td>
+                            <!-- Main Table Row in PARTIAL_TEMPLATE -->
                             <td>
                                 <div class="{% if t.symbol == '?' %}text-muted fst-italic{% else %}fw-semibold{% endif %}">
-                                    {{ t.title }}
+                                    {{ t.title | render_links | safe }}
                                 </div>
                                 {% if t.subtasks %}
-                                    <ul class="list-unstyled ms-3 mt-2 mb-0 small">
+                                    <ul class="list-unstyled ms-2 mt-2 mb-0 small">
                                         {% for sub in t.subtasks %}
-                                            <li class="d-flex align-items-center justify-content-between mb-1">
-                                                <span>
-                                                    <span class="{% if 'focus' in t.tags %}text-dark{% else %}text-secondary{% endif %}">↳</span> 
-                                                    <span class="{% if 'focus' in t.tags %}text-dark{% else %}text-muted{% endif %}">{{ sub }}</span>
+                                            <li class="d-flex justify-content-between align-items-center mb-1 pb-1 border-bottom border-secondary-subtle">
+                                                <!-- Left column: Arrow + Text/Links -->
+                                                <span class="subtask-text-container me-3" title="{{ sub }}">
+                                                    <span class="{% if 'focus' in t.tags %}text-dark{% else %}text-secondary{% endif %} me-1">↳</span> 
+                                                    <span class="{% if 'focus' in t.tags %}text-dark{% else %}text-muted{% endif %}">{{ sub | render_links | safe }}</span>
                                                 </span>
-                                                <button 
-                                                    data-parent="{{ t.title|forceescape }}" 
-                                                    data-subtask="{{ sub|forceescape }}" 
-                                                    class="btn {% if 'focus' in t.tags %}btn-dark text-success border-success{% else %}btn-outline-success{% endif %} btn-complete btn-complete-subtask ms-2">✓ Done</button>
+                                                
+                                                <!-- Right column: Standardized subtask button group -->
+                                                <div class="subtask-action-container flex-shrink-0">
+                                                    <button 
+                                                        data-parent="{{ t.title|forceescape }}" 
+                                                        data-subtask="{{ sub|forceescape }}" 
+                                                        class="btn btn-sm {% if 'focus' in t.tags %}btn-dark text-success border-success{% else %}btn-outline-success{% endif %} btn-complete-subtask py-0 px-2 fs-7"
+                                                        data-bs-toggle="tooltip"
+                                                        data-bs-placement="top"
+                                                        title="Complete subtask">✓ Done</button>
+                                                </div>
                                             </li>
                                         {% endfor %}
                                     </ul>
@@ -904,6 +967,45 @@ def insert_date_at_front(raw_line: str, date_str: str) -> str:
         content = stripped[1:].strip()
         return f"{symbol} {date_str} {content}"
     return f"{date_str} {stripped}"
+
+import re
+
+# web_app.py
+
+# web_app.py
+import re
+import html
+
+def render_links(text: str) -> str:
+    """
+    Converts Markdown link syntax into HTML anchor tags supporting http, https, and custom schemes like obsidian://.
+    Handles standard [Label](URL) and (URL)[Label] patterns.
+    """
+    if not text:
+        return ""
+
+    # Unescape HTML entities first in case Jinja escaped & to &amp;
+    text = html.unescape(text)
+
+    # Standard [Label](URL)
+    pattern_std = r'\[([^\]]+)\]\((obsidian://[^\s)]+|https?://[^\s)]+)\)'
+    text = re.sub(
+        pattern_std, 
+        r'<a href="\2" target="_blank" class="text-info text-decoration-underline" onclick="event.stopPropagation();">\1</a>', 
+        text
+    )
+
+    # Alternative (URL)[Label]
+    pattern_alt = r'\((obsidian://[^\s)]+|https?://[^\s)]+)\)\[([^\]]+)\]'
+    text = re.sub(
+        pattern_alt, 
+        r'<a href="\1" target="_blank" class="text-info text-decoration-underline" onclick="event.stopPropagation();">\1</a>', 
+        text
+    )
+
+    return text
+
+app.jinja_env.filters['render_links'] = render_links
 
 # Endpoints
 

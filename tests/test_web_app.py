@@ -165,3 +165,85 @@ def test_edit_task_route(client):
     assert "Old description" not in content
     assert "! 10/20 Updated description #priority #work" in content
     assert "  * Subtask A" in content
+
+    def test_render_obsidian_link_in_partial(client):
+        test_client, test_file = client
+        obsidian_uri = "obsidian://open?vault=obsidian&file=300%20Music%20MOC%2F360%20Instruments%20MOC%2F310%20Guitar%20MOC%2FApril%20Come%20She%20Will"
+        
+        test_file.write_text(f"* 10/23 Practiced ({obsidian_uri})[April Come She Will] #guitar\n")
+
+        response = test_client.get('/partial')
+        assert response.status_code == 200
+        
+        html = response.get_data(as_text=True)
+
+        expected_anchor = f'<a href="{obsidian_uri}" target="_blank" class="text-info text-decoration-underline" onclick="event.stopPropagation();">April Come She Will</a>'
+        
+        # Verify exact anchor renders and raw syntax is removed
+        assert expected_anchor in html
+        assert f"({obsidian_uri})[April Come She Will]" not in html
+
+def test_long_task_description_and_subtasks_have_truncation_classes(client):
+    test_client, test_file = client
+    now = datetime.now()
+    today_str = f"{now.month}/{now.day}"
+    long_title = "A" * 150
+    long_subtask = "B" * 150
+
+    test_file.write_text(f"* {today_str} {long_title}\n  * {long_subtask}\n")
+
+    response = test_client.get('/partial')
+    assert response.status_code == 200
+
+    html = response.get_data(as_text=True)
+    assert 'task-title-cell' in html
+    assert 'subtask-text-container' in html
+    assert 'action-cell' in html
+
+def test_render_obsidian_link_in_subtask(client):
+    test_client, test_file = client
+    now = datetime.now()
+    today_str = f"{now.month}/{now.day}"
+    obsidian_uri = "obsidian://open?vault=obsidian&file=300%20Music%20MOC%2F360%20Instruments%20MOC%2F310%20Guitar%20MOC%2F16%20Military%20Wives"
+    
+    # Standard Markdown link order: [Label](URL) with dynamic today's date
+    test_file.write_text(f"* {today_str} Guitar practice\n  * [16 Wives]({obsidian_uri}) vs. Yours\n")
+
+    response = test_client.get('/partial')
+    assert response.status_code == 200
+    
+    html = response.get_data(as_text=True)
+    assert '<a href="obsidian://' in html
+    assert '>16 Wives</a>' in html
+
+def test_render_standard_markdown_link_order(client):
+    test_client, test_file = client
+    now = datetime.now()
+    today_str = f"{now.month}/{now.day}"
+    obsidian_uri = "obsidian://open?vault=obsidian&file=test_note"
+    
+    test_file.write_text(f"* {today_str} Review [16 Wives]({obsidian_uri}) notes\n")
+
+    response = test_client.get('/partial')
+    assert response.status_code == 200
+    
+    html = response.get_data(as_text=True)
+
+    # Verify anchor tag structure and label text are present in rendered HTML
+    assert '<a href="obsidian://open?vault=obsidian' in html
+    assert '>16 Wives</a>' in html
+    assert f"[{obsidian_uri}]" not in html
+
+def test_subtasks_render_with_aligned_action_container(client):
+    test_client, test_file = client
+    now = datetime.now()
+    today_str = f"{now.month}/{now.day}"
+
+    test_file.write_text(f"* {today_str} Guitar practice\n  * Bakers Street vs Wish You Were Here\n")
+
+    response = test_client.get('/partial')
+    assert response.status_code == 200
+
+    html = response.get_data(as_text=True)
+    assert 'subtask-action-container' in html
+    assert 'btn-complete-subtask' in html

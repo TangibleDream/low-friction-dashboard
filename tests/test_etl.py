@@ -298,6 +298,19 @@ def test_parse_hyphen_and_dated_tasks(tmp_path):
     data = parse_tasks(str(task_file))
     assert len(data["today"]) + len(data["future"]) == 2
 
+def test_parse_task_with_obsidian_markdown_link(tmp_path):
+    task_file = tmp_path / "tasks.txt"
+    obsidian_uri = "obsidian://open?vault=obsidian&file=300%20Music%20MOC%2F360%20Instruments%20MOC%2F310%20Guitar%20MOC%2FApril%20Come%20She%20Will"
+    
+    task_file.write_text(f"* 10/23 Practiced ({obsidian_uri})[April Come She Will] #guitar\n")
+
+    data = parse_tasks(str(task_file))
+    task = data["today"][0]
+
+    # Verify link parsing retains markdown syntax or renders cleanly
+    assert "April Come She Will" in task["title"]
+    assert "obsidian://" in task["raw"]
+
 def test_shift_line_to_tomorrow():
     now = datetime.now()
     tomorrow = now + timedelta(days=1)

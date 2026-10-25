@@ -298,6 +298,19 @@ def test_parse_hyphen_and_dated_tasks(tmp_path):
     data = parse_tasks(str(task_file))
     assert len(data["today"]) + len(data["future"]) == 2
 
+def test_parse_task_with_fibonacci_score(tmp_path):
+    task_file = tmp_path / "tasks.txt"
+    now = datetime.now()
+    today_str = f"{now.month}/{now.day}"
+
+    task_file.write_text(f"* {today_str} Refactor board ETL #fib:5 #focus\n")
+
+    data = parse_tasks(str(task_file))
+    task = data["today"][0]
+
+    assert task["fib_score"] == "5"
+    assert "Refactor board ETL" in task["title"]
+    
 def test_parse_task_with_obsidian_markdown_link(tmp_path):
     task_file = tmp_path / "tasks.txt"
     obsidian_uri = "obsidian://open?vault=obsidian&file=300%20Music%20MOC%2F360%20Instruments%20MOC%2F310%20Guitar%20MOC%2FApril%20Come%20She%20Will"

@@ -282,18 +282,26 @@ HTML_TEMPLATE = r"""
                 const typeEl = document.getElementById('edit-task-type');
                 const descEl = document.getElementById('edit-task-desc');
                 const tagsEl = document.getElementById('edit-task-tags-input');
+                const editFibEl = document.getElementById('edit-task-fib-score');
+                const tagsList = (editBtn.getAttribute('data-tags') || '').split(/\s+/);
+                const fibTag = tagsList.find(t => t.toLowerCase().startsWith('fib:'));
+
+                if (editFibEl) {
+                    editFibEl.value = fibTag ? fibTag.split(':')[1] : '';
+                }
 
                 if (!oldRawEl || !dateEl || !typeEl || !descEl || !tagsEl) {
                     console.error("Edit modal elements missing from DOM");
                     return;
                 }
 
+                // Strip fib: tag from general tags input field so it stays clean
                 oldRawEl.value = editBtn.getAttribute('data-raw') || '';
                 dateEl.value = editBtn.getAttribute('data-date') || '';
                 typeEl.value = editBtn.getAttribute('data-symbol') || '*';
                 descEl.value = editBtn.getAttribute('data-title') || '';
-                tagsEl.value = editBtn.getAttribute('data-tags') || '';
-
+                tagsEl.value = tagsList.filter(t => !t.toLowerCase().startsWith('fib:')).join(' ');
+                                
                 const subtasksContainer = document.getElementById('edit-subtasks-container');
                 if (subtasksContainer) {
                     subtasksContainer.innerHTML = '';
@@ -375,15 +383,19 @@ HTML_TEMPLATE = r"""
                 const symbol = document.getElementById('task-type').value;
                 const description = document.getElementById('task-desc').value.trim();
                 const rawTags = document.getElementById('task-tags-input').value.trim();
+                const fibScore = document.getElementById('task-fib-score').value;
 
                 if (!description) {
                     document.getElementById('task-desc').classList.add('is-invalid');
                     return;
                 }
 
-                const tags = rawTags ? rawTags.split(/\s+/).map(t => t.replace(/^#/, '')) : [];
-                
-                // Scope selector strictly to #subtasks-container to avoid pulling from #edit-subtasks-container
+                // Single declaration of tags
+                let tags = rawTags ? rawTags.split(/\s+/).map(t => t.replace(/^#/, '')) : [];
+                if (fibScore) {
+                    tags.push(`fib:${fibScore}`);
+                }
+
                 const subtaskInputs = document.querySelectorAll('#subtasks-container .subtask-input');
                 const subtasks = Array.from(subtaskInputs)
                     .map(input => input.value.trim())
@@ -399,8 +411,7 @@ HTML_TEMPLATE = r"""
                         const modal = bootstrap.Modal.getInstance(modalEl);
                         if (modal) modal.hide();
                         document.getElementById('create-task-form').reset();
-                        
-                        // Clear and reset subtask rows
+
                         document.getElementById('subtasks-container').innerHTML = `
                             <div class="input-group input-group-sm mb-1 subtask-row">
                                 <span class="input-group-text bg-dark border-secondary text-secondary">↳</span>
@@ -411,7 +422,7 @@ HTML_TEMPLATE = r"""
                     }
                 });
             }
-        });
+});
 
         // Ensure create modal always opens with clean default state and today's date
         document.addEventListener('show.bs.modal', function(e) {
@@ -448,13 +459,19 @@ HTML_TEMPLATE = r"""
                 const symbol = document.getElementById('edit-task-type').value;
                 const description = document.getElementById('edit-task-desc').value.trim();
                 const rawTags = document.getElementById('edit-task-tags-input').value.trim();
+                const fibScore = document.getElementById('edit-task-fib-score').value;
 
                 if (!description) {
                     document.getElementById('edit-task-desc').classList.add('is-invalid');
                     return;
                 }
 
-                const tags = rawTags ? rawTags.split(/\s+/).map(t => t.replace(/^#/, '')) : [];
+                // Single declaration of tags
+                let tags = rawTags ? rawTags.split(/\s+/).map(t => t.replace(/^#/, '')) : [];
+                if (fibScore) {
+                    tags.push(`fib:${fibScore}`);
+                }
+
                 const subtaskInputs = document.querySelectorAll('#edit-subtasks-container .subtask-input');
                 const subtasks = Array.from(subtaskInputs)
                     .map(input => input.value.trim())
@@ -463,13 +480,13 @@ HTML_TEMPLATE = r"""
                 fetch('/edit_task', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        old_raw: oldRaw, 
-                        date: dateVal, 
-                        symbol: symbol, 
-                        description: description, 
-                        tags: tags, 
-                        subtasks: subtasks 
+                    body: JSON.stringify({
+                        old_raw: oldRaw,
+                        date: dateVal,
+                        symbol: symbol,
+                        description: description,
+                        tags: tags,
+                        subtasks: subtasks
                     })
                 }).then(res => {
                     if (res.ok) {
@@ -491,6 +508,7 @@ HTML_TEMPLATE = r"""
                 <div class="modal-header border-secondary">
                     <h5 class="modal-title fs-6 fw-bold text-info" id="addTaskModalLabel">📌 Create Scheduled Task</h5>
                 </div>
+                <!-- Task Creation Modal Body -->
                 <div class="modal-body">
                     <form id="create-task-form">
                         <div class="mb-3">
@@ -512,14 +530,28 @@ HTML_TEMPLATE = r"""
                             <input type="text" class="form-control bg-dark text-light border-secondary" id="task-desc" placeholder="e.g. Review pull request" required autocomplete="off">
                         </div>
 
-                        <div class="mb-3">
-                            <label class="form-label text-secondary small fw-bold">TAGS (Type or select historical)</label>
-                            <input type="text" class="form-control bg-dark text-light border-secondary" id="task-tags-input" list="historical-tags-list" placeholder="e.g. priority work">
-                            <datalist id="historical-tags-list">
-                                {% for tag in data.all_tags %}
-                                    <option value="{{ tag }}"></option>
-                                {% endfor %}
-                            </datalist>
+                        <div class="row g-2 mb-3">
+                            <div class="col-8">
+                                <label class="form-label text-secondary small fw-bold">TAGS (Type or select historical)</label>
+                                <input type="text" class="form-control bg-dark text-light border-secondary" id="task-tags-input" list="historical-tags-list" placeholder="e.g. priority work">
+                                <datalist id="historical-tags-list">
+                                    {% for tag in data.all_tags %}
+                                        <option value="{{ tag }}"></option>
+                                    {% endfor %}
+                                </datalist>
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label text-secondary small fw-bold">FIB SCORE</label>
+                                <select class="form-select bg-dark text-light border-secondary" id="task-fib-score">
+                                    <option value="" selected>None</option>
+                                    <option value="1">1 pt</option>
+                                    <option value="2">2 pts</option>
+                                    <option value="3">3 pts</option>
+                                    <option value="5">5 pts</option>
+                                    <option value="8">8 pts</option>
+                                    <option value="13">13 pts</option>
+                                </select>
+                            </div>
                         </div>
 
                         <div class="mb-3">
@@ -557,6 +589,24 @@ HTML_TEMPLATE = r"""
                         <input type="hidden" id="edit-old-raw">
                         
                         <div class="mb-3">
+                            <div class="row g-2 mb-3">
+                                <div class="col-8">
+                                    <label class="form-label text-secondary small fw-bold">TAGS</label>
+                                    <input type="text" class="form-control bg-dark text-light border-secondary" id="edit-task-tags-input" list="historical-tags-list">
+                                </div>
+                                <div class="col-4">
+                                    <label class="form-label text-secondary small fw-bold">FIB SCORE</label>
+                                    <select class="form-select bg-dark text-light border-secondary" id="edit-task-fib-score">
+                                        <option value="" selected>None</option>
+                                        <option value="1">1 pt</option>
+                                        <option value="2">2 pts</option>
+                                        <option value="3">3 pts</option>
+                                        <option value="5">5 pts</option>
+                                        <option value="8">8 pts</option>
+                                        <option value="13">13 pts</option>
+                                    </select>
+                                </div>
+                            </div>
                             <label class="form-label text-secondary small fw-bold">SCHEDULED DATE</label>
                             <input type="date" class="form-control bg-dark text-light border-secondary" id="edit-task-date">
                         </div>
@@ -647,11 +697,14 @@ PARTIAL_TEMPLATE = """
                                 {% endif %}
                             </td>
                             <td class="text-info fw-semibold align-top" style="white-space: nowrap;">{{ t.time or 'Flexible' }}</td>
-                            <td class="align-top">
-                                {% if t.contexts %}
-                                    <span class="badge bg-secondary">@{{ t.contexts[0] }}</span>
-                                {% endif %}
-                            </td>
+                          <td class="align-top">
+                            {% if t.contexts %}
+                                <span class="badge bg-secondary">@{{ t.contexts[0] }}</span>
+                            {% endif %}
+                            {% if t.fib_score %}
+                                <span class="badge bg-purple text-light border border-purple ms-1" style="background-color: #6b21a8;" title="Fibonacci Effort Score">⚡ {{ t.fib_score }}</span>
+                            {% endif %}
+                        </td>
                             <td class="align-top">
                                 <div class="task-title-cell {% if t.symbol == '?' %}text-muted fst-italic{% else %}fw-semibold{% endif %}">
                                     {{ t.title | render_links | safe }}

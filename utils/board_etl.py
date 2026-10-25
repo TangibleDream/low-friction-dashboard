@@ -348,6 +348,13 @@ def parse_tasks(file_path: str):
             raw_tags = re.findall(r'#([\w-]+(?::[\w-]+)?)', content)
             tags = [t.lower() for t in raw_tags]
 
+            # Extract fibonacci score if present (e.g., #fib:3 -> '3')
+            fib_score = None
+            for tag in tags:
+                if tag.startswith("fib:"):
+                    fib_score = tag.split(":", 1)[1]
+                    break
+
             contexts = re.findall(r'@([\w-]+)', content)
 
             clean_title = content
@@ -359,11 +366,13 @@ def parse_tasks(file_path: str):
             # Strip contexts and tags case-insensitively
             for c in contexts:
                 clean_title = re.sub(rf'@{re.escape(c)}\b', '', clean_title, flags=re.IGNORECASE)
+            # Ensure fib: tags are stripped from the main title text
             for t in raw_tags:
                 clean_title = re.sub(rf'#{re.escape(t)}\b', '', clean_title, flags=re.IGNORECASE)
 
             clean_title = re.sub(r'\s+', ' ', clean_title).strip()
 
+            # Include 'fib_score' in current_task dictionary:
             current_task = {
                 'symbol': symbol,
                 'title': clean_title,
@@ -371,6 +380,7 @@ def parse_tasks(file_path: str):
                 'parsed_date': parsed_dt,
                 'contexts': contexts,
                 'tags': tags,
+                'fib_score': fib_score,
                 'subtasks': [],
                 'raw': stripped
             }

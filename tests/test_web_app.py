@@ -79,7 +79,22 @@ def test_add_task_does_not_leak_subtasks_from_edit_modal(client):
         assert "Fold shirts" not in follow_line
         assert "Match socks" not in follow_line
         assert "Hang jackets" not in follow_line
-        
+
+def test_add_task_with_fibonacci_score(client):
+    test_client, test_file = client
+
+    response = test_client.post('/add_task', json={
+        "symbol": "*",
+        "description": "Implement fibonacci points",
+        "tags": ["feature", "fib:8"]
+    })
+
+    assert response.status_code == 200
+
+    content = test_file.read_text()
+    assert "#fib:8" in content
+    assert "Implement fibonacci points" in content
+            
 def test_complete_daily_task_route(client):
     test_client, test_file = client
     test_file.write_text("* 10/17 Check for ripe figs #Daily #focus\n\n# Done\n")

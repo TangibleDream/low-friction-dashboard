@@ -96,6 +96,62 @@ HTML_TEMPLATE = r"""
     <script>
         let evtSource;
         
+        // Function to reload dashboard partial HTML
+        function refreshDashboard() {
+            fetch('/partial')
+                .then(res => {
+                    if (res.ok) return res.text();
+                    throw new Error('Partial refresh failed');
+                })
+                .then(html => {
+                    const container = document.getElementById('dashboard-content');
+                    if (container) {
+                        container.innerHTML = html;
+                        initTooltips();
+                    }
+                })
+                .catch(err => console.error("Auto-refresh error:", err));
+        }
+
+        // 1. Re-sync immediately when computer wakes up or tab regains focus
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'visible') {
+                refreshDashboard();
+                if (evtSource && evtSource.readyState === EventSource.CLOSED) {
+                    connectSSE();
+                }
+            }
+        });
+
+        // 2. Schedule automatic refresh every night at 12:10 AM
+        function scheduleMidnightRefresh() {
+            const now = new Date();
+            const nextRefresh = new Date();
+
+            // Target 12:10:00 AM (00:10:00)
+            nextRefresh.setHours(0, 10, 0, 0);
+
+            // If 12:10 AM has already passed today, target 12:10 AM tomorrow
+            if (now >= nextRefresh) {
+                nextRefresh.setDate(nextRefresh.getDate() + 1);
+            }
+
+            const msUntilRefresh = nextRefresh.getTime() - now.getTime();
+            console.log(`Scheduled next 12:10 AM refresh in ${(msUntilRefresh / 1000 / 60).toFixed(1)} minutes.`);
+
+            setTimeout(() => {
+                refreshDashboard();
+                // Repeat daily
+                setInterval(refreshDashboard, 24 * 60 * 60 * 1000);
+            }, msUntilRefresh);
+        }
+
+        // Initialize on page load
+        document.addEventListener("DOMContentLoaded", function() {
+            initTooltips();
+            scheduleMidnightRefresh();
+        });
+
         function initTooltips() {
             const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
             [...tooltipTriggerList].map(tooltipTriggerEl => bootstrap.Tooltip.getOrCreateInstance(tooltipTriggerEl));

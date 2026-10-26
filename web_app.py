@@ -589,24 +589,6 @@ HTML_TEMPLATE = r"""
                         <input type="hidden" id="edit-old-raw">
                         
                         <div class="mb-3">
-                            <div class="row g-2 mb-3">
-                                <div class="col-8">
-                                    <label class="form-label text-secondary small fw-bold">TAGS</label>
-                                    <input type="text" class="form-control bg-dark text-light border-secondary" id="edit-task-tags-input" list="historical-tags-list">
-                                </div>
-                                <div class="col-4">
-                                    <label class="form-label text-secondary small fw-bold">FIB SCORE</label>
-                                    <select class="form-select bg-dark text-light border-secondary" id="edit-task-fib-score">
-                                        <option value="" selected>None</option>
-                                        <option value="1">1 pt</option>
-                                        <option value="2">2 pts</option>
-                                        <option value="3">3 pts</option>
-                                        <option value="5">5 pts</option>
-                                        <option value="8">8 pts</option>
-                                        <option value="13">13 pts</option>
-                                    </select>
-                                </div>
-                            </div>
                             <label class="form-label text-secondary small fw-bold">SCHEDULED DATE</label>
                             <input type="date" class="form-control bg-dark text-light border-secondary" id="edit-task-date">
                         </div>
@@ -626,8 +608,24 @@ HTML_TEMPLATE = r"""
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label text-secondary small fw-bold">TAGS</label>
-                            <input type="text" class="form-control bg-dark text-light border-secondary" id="edit-task-tags-input" list="historical-tags-list">
+                            <div class="row g-2 mb-3">
+                                <div class="col-8">
+                                    <label class="form-label text-secondary small fw-bold">TAGS</label>
+                                    <input type="text" class="form-control bg-dark text-light border-secondary" id="edit-task-tags-input" list="historical-tags-list">
+                                </div>
+                                <div class="col-4">
+                                    <label class="form-label text-secondary small fw-bold">FIB SCORE</label>
+                                    <select class="form-select bg-dark text-light border-secondary" id="edit-task-fib-score">
+                                        <option value="" selected>None</option>
+                                        <option value="1">1 pt</option>
+                                        <option value="2">2 pts</option>
+                                        <option value="3">3 pts</option>
+                                        <option value="5">5 pts</option>
+                                        <option value="8">8 pts</option>
+                                        <option value="13">13 pts</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="mb-3">

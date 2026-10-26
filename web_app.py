@@ -1415,4 +1415,4 @@ if __name__ == "__main__":
         TASK_FILE.write_text("! 10:30 - 11:00 Weekly Sync @admin #30-min\n* Dry Whites @home #wait\n")
     
     print("Serving Bootstrap 5 Dashboard at http://127.0.0.1:5000")
-    app.run(port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)

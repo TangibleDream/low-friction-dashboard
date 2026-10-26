@@ -1332,47 +1332,27 @@ def complete_subtask():
 
     lines = TASK_FILE.read_text().splitlines()
     new_lines = []
-    parent_line_idx = None
-    remaining_subtasks_count = 0
     in_target_parent = False
 
-    for idx, line in enumerate(lines):
+    for line in lines:
         stripped = line.strip()
 
+        # Identify parent task line
         if stripped and stripped[0] in "!*?" and parent_title in line:
             in_target_parent = True
-            parent_line_idx = idx
             new_lines.append(line)
             continue
 
+        # If inside target subtask block, check if this is the target subtask line to delete
         if in_target_parent and (line.startswith(" ") or line.startswith("\t")):
             if subtask_text in line:
-                continue
-            else:
-                remaining_subtasks_count += 1
+                continue  # Delete/drop this completed subtask line
         elif stripped and stripped[0] in "!*?#":
             in_target_parent = False
 
         new_lines.append(line)
 
-    if parent_line_idx is not None and remaining_subtasks_count == 0:
-        parent_raw = lines[parent_line_idx].strip()
-        final_lines = [l for l in new_lines if l.strip() != parent_raw]
-        
-        date_match = re.search(r'(?<!\d:)\b(\d{1,2}/\d{1,2})\b(?!\:\d{2})', parent_raw)
-        now = datetime.now()
-        today_str = f"{now.month}/{now.day}"
-        
-        if not date_match:
-            parent_raw = insert_date_at_front(parent_raw, today_str)
-
-        if "# Done" not in final_lines:
-            final_lines.append("\n# Done")
-        final_lines.append(f"x {parent_raw}")
-        TASK_FILE.write_text("\n".join(final_lines) + "\n")
-    else:
-        TASK_FILE.write_text("\n".join(new_lines) + "\n")
-
+    TASK_FILE.write_text("\n".join(new_lines) + "\n")
     return jsonify({"status": "ok"})
 
 @app.route("/complete_task", methods=["POST"])

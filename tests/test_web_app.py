@@ -114,6 +114,30 @@ def test_complete_daily_task_route(client):
     # Confirm completed entry moved under # Done without #focus
     assert "x * 10/17 Check for ripe figs #Daily" in content
 
+def test_completing_last_subtask_keeps_main_task_open(client):
+    test_client, test_file = client
+    now = datetime.now()
+    today_str = f"{now.month}/{now.day}"
+
+    # Setup parent task with exactly 1 subtask
+    test_file.write_text(f"* {today_str} Mandolin practice\n  * Practice fingerpicking pattern\n\n# Done\n")
+
+    response = test_client.post('/complete_subtask', json={
+        "parent_title": "Mandolin practice",
+        "subtask": "Practice fingerpicking pattern"
+    })
+
+    assert response.status_code == 200
+
+    content = test_file.read_text()
+    
+    # Subtask should be removed
+    assert "Practice fingerpicking pattern" not in content
+    
+    # Main parent task MUST remain active and NOT be moved under # Done
+    assert f"* {today_str} Mandolin practice" in content
+    assert f"x * {today_str} Mandolin practice" not in content
+
 def test_complete_main_task(client):
     test_client, test_file = client
 
@@ -128,6 +152,11 @@ def test_complete_main_task(client):
 
 def test_complete_subtask_with_single_quote(client):
     test_client, test_file = client
+    
+    # Setup parent task with single-quote subtask
+    now = datetime.now()
+    today_str = f"{now.month}/{now.day}"
+    test_file.write_text(f"* {today_str} 6 guitar net 2 pieces\n  * We Sing Hallelujah vs Uncle John's Band\n\n# Done\n")
 
     response = test_client.post('/complete_subtask', json={
         "parent_title": "6 guitar net 2 pieces",
@@ -137,9 +166,14 @@ def test_complete_subtask_with_single_quote(client):
     assert response.status_code == 200
 
     file_content = test_file.read_text()
-    assert "# Done" in file_content
-    assert f"x * {today_str} 6 guitar net 2 pieces @skill-building" in file_content
-
+    
+    # Subtask is removed
+    assert "We Sing Hallelujah vs Uncle John's Band" not in file_content
+    
+    # Parent task stays open in place
+    assert "6 guitar net 2 pieces" in file_content
+    assert "x * " not in file_content
+    
 def test_edit_future_task_route(client):
     test_client, test_file = client
     test_file.write_text("* 11/15 Board sync @admin #3rd-Sunday\n\n# Done\n")

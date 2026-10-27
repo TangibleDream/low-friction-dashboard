@@ -85,7 +85,9 @@ HTML_TEMPLATE = r"""
     <div class="container">
         <header class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom border-secondary">
             <h1 class="h3 m-0 text-cyan">⚡ Executive Focus Engine</h1>
-            <span class="badge bg-outline-light border text-muted" id="status-badge">Live Sync Active</span>
+            <div class="d-flex align-items-center gap-3">
+                <span class="badge bg-outline-light border text-muted" id="status-badge">Live Sync Active</span>
+            </div>
         </header>
 
         <div id="dashboard-content">
@@ -96,7 +98,6 @@ HTML_TEMPLATE = r"""
     <script>
         let evtSource;
         
-        // Function to reload dashboard partial HTML
         function refreshDashboard() {
             fetch('/partial')
                 .then(res => {
@@ -113,7 +114,6 @@ HTML_TEMPLATE = r"""
                 .catch(err => console.error("Auto-refresh error:", err));
         }
 
-        // 1. Re-sync immediately when computer wakes up or tab regains focus
         document.addEventListener('visibilitychange', function() {
             if (document.visibilityState === 'visible') {
                 refreshDashboard();
@@ -123,41 +123,32 @@ HTML_TEMPLATE = r"""
             }
         });
 
-        // 2. Schedule automatic refresh every night at 12:10 AM
         function scheduleMidnightRefresh() {
             const now = new Date();
             const nextRefresh = new Date();
-
-            // Target 12:10:00 AM (00:10:00)
             nextRefresh.setHours(0, 10, 0, 0);
 
-            // If 12:10 AM has already passed today, target 12:10 AM tomorrow
             if (now >= nextRefresh) {
                 nextRefresh.setDate(nextRefresh.getDate() + 1);
             }
 
             const msUntilRefresh = nextRefresh.getTime() - now.getTime();
-            console.log(`Scheduled next 12:10 AM refresh in ${(msUntilRefresh / 1000 / 60).toFixed(1)} minutes.`);
-
             setTimeout(() => {
                 refreshDashboard();
-                // Repeat daily
                 setInterval(refreshDashboard, 24 * 60 * 60 * 1000);
             }, msUntilRefresh);
         }
-
-        // Initialize on page load
-        document.addEventListener("DOMContentLoaded", function() {
-            initTooltips();
-            scheduleMidnightRefresh();
-        });
 
         function initTooltips() {
             const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
             [...tooltipTriggerList].map(tooltipTriggerEl => bootstrap.Tooltip.getOrCreateInstance(tooltipTriggerEl));
         }
 
-        document.addEventListener("DOMContentLoaded", initTooltips);
+        document.addEventListener("DOMContentLoaded", function() {
+            initTooltips();
+            scheduleMidnightRefresh();
+            connectSSE();
+        });
 
         function connectSSE() {
             evtSource = new EventSource("/stream");
@@ -167,66 +158,71 @@ HTML_TEMPLATE = r"""
                     fetch('/partial')
                         .then(res => res.text())
                         .then(html => {
-                            document.getElementById('dashboard-content').innerHTML = html;
-                            initTooltips();
+                            const container = document.getElementById('dashboard-content');
+                            if (container) {
+                                container.innerHTML = html;
+                                initTooltips();
+                            }
                         });
                 }
             };
 
             evtSource.onerror = function() {
-                document.getElementById('status-badge').textContent = "Sync Reconnecting...";
-                document.getElementById('status-badge').className = "badge bg-outline-light border text-warning";
-                
+                const badge = document.getElementById('status-badge');
+                if (badge) {
+                    badge.textContent = "Sync Reconnecting...";
+                    badge.className = "badge bg-outline-light border text-warning";
+                }
                 evtSource.close();
                 setTimeout(connectSSE, 3000);
             };
         }
 
-        connectSSE();
-
+        // Global Click Event Handler
         document.addEventListener('click', function(e) {
             if (e.target.closest('button')) {
                 const shiftBtn = e.target.closest('.btn-shift-task');
                 if (shiftBtn) {
-                    const rawLine = shiftBtn.getAttribute('data-raw');
                     fetch('/shift_task', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ raw_line: rawLine })
+                        body: JSON.stringify({ raw_line: shiftBtn.getAttribute('data-raw') })
                     });
                     return;
                 }
 
                 const subtaskBtn = e.target.closest('.btn-complete-subtask');
                 if (subtaskBtn) {
-                    const parentTitle = subtaskBtn.getAttribute('data-parent');
-                    const subtaskText = subtaskBtn.getAttribute('data-subtask');
                     fetch('/complete_subtask', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ parent_title: parentTitle, subtask: subtaskText })
+                        body: JSON.stringify({ 
+                            parent_title: subtaskBtn.getAttribute('data-parent'), 
+                            subtask: subtaskBtn.getAttribute('data-subtask'),
+                            preserve_subtasks: subtaskBtn.getAttribute('data-preserve') === 'true'
+                        })
                     });
                     return;
                 }
 
                 const taskBtn = e.target.closest('.btn-complete-task');
                 if (taskBtn) {
-                    const rawLine = taskBtn.getAttribute('data-raw');
                     fetch('/complete_task', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ raw_line: rawLine })
+                        body: JSON.stringify({ 
+                            raw_line: taskBtn.getAttribute('data-raw')
+                        })
                     });
                     return;
                 }
 
                 const makeTodayBtn = e.target.closest('.btn-make-today');
                 if (makeTodayBtn) {
-                    const rawLine = makeTodayBtn.getAttribute('data-raw');
                     fetch('/make_today', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ raw_line: rawLine })
+                        body: JSON.stringify({ raw_line: makeTodayBtn.getAttribute('data-raw') })
                     });
                     return;
                 }
@@ -262,15 +258,15 @@ HTML_TEMPLATE = r"""
 
             const taskRow = e.target.closest('.task-row');
             if (taskRow) {
-                const rawLine = taskRow.getAttribute('data-raw');
                 fetch('/toggle_focus', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ raw_line: rawLine })
+                    body: JSON.stringify({ raw_line: taskRow.getAttribute('data-raw') })
                 });
             }
         });
 
+        // Open Edit Modal Listener
         document.addEventListener('click', function(e) {
             const editBtn = e.target.closest('.btn-edit-task');
             if (editBtn) {
@@ -283,11 +279,18 @@ HTML_TEMPLATE = r"""
                 const descEl = document.getElementById('edit-task-desc');
                 const tagsEl = document.getElementById('edit-task-tags-input');
                 const editFibEl = document.getElementById('edit-task-fib-score');
-                const tagsList = (editBtn.getAttribute('data-tags') || '').split(/\s+/);
-                const fibTag = tagsList.find(t => t.toLowerCase().startsWith('fib:'));
+                const editPreserveEl = document.getElementById('edit-task-preserve-subtasks');
 
+                const tagsList = (editBtn.getAttribute('data-tags') || '').split(/\s+/);
+                
+                const fibTag = tagsList.find(t => t.toLowerCase().startsWith('fib:'));
                 if (editFibEl) {
                     editFibEl.value = fibTag ? fibTag.split(':')[1] : '';
+                }
+
+                const hasPreserveTag = tagsList.some(t => ['preserve_subtasks', 'keep_subtasks'].includes(t.toLowerCase()));
+                if (editPreserveEl) {
+                    editPreserveEl.checked = hasPreserveTag;
                 }
 
                 if (!oldRawEl || !dateEl || !typeEl || !descEl || !tagsEl) {
@@ -295,13 +298,16 @@ HTML_TEMPLATE = r"""
                     return;
                 }
 
-                // Strip fib: tag from general tags input field so it stays clean
                 oldRawEl.value = editBtn.getAttribute('data-raw') || '';
                 dateEl.value = editBtn.getAttribute('data-date') || '';
                 typeEl.value = editBtn.getAttribute('data-symbol') || '*';
                 descEl.value = editBtn.getAttribute('data-title') || '';
-                tagsEl.value = tagsList.filter(t => !t.toLowerCase().startsWith('fib:')).join(' ');
-                                
+                
+                tagsEl.value = tagsList.filter(t => 
+                    !t.toLowerCase().startsWith('fib:') && 
+                    !['preserve_subtasks', 'keep_subtasks'].includes(t.toLowerCase())
+                ).join(' ');
+
                 const subtasksContainer = document.getElementById('edit-subtasks-container');
                 if (subtasksContainer) {
                     subtasksContainer.innerHTML = '';
@@ -336,9 +342,13 @@ HTML_TEMPLATE = r"""
                 }
                 return;
             }
+        });
 
-            if (e.target && e.target.id === 'btn-add-edit-subtask-field') {
-                const container = document.getElementById('edit-subtasks-container');
+        // Add / Remove Subtask Input Fields
+        document.addEventListener('click', function(e) {
+            if (e.target && (e.target.id === 'btn-add-subtask-field' || e.target.id === 'btn-add-edit-subtask-field')) {
+                const containerId = e.target.id === 'btn-add-subtask-field' ? 'subtasks-container' : 'edit-subtasks-container';
+                const container = document.getElementById(containerId);
                 if (container) {
                     const row = document.createElement('div');
                     row.className = 'input-group input-group-sm mb-1 subtask-row';
@@ -352,22 +362,6 @@ HTML_TEMPLATE = r"""
                 }
                 return;
             }
-        });
-
-        document.addEventListener('click', function(e) {
-            if (e.target && e.target.id === 'btn-add-subtask-field') {
-                const container = document.getElementById('subtasks-container');
-                const row = document.createElement('div');
-                row.className = 'input-group input-group-sm mb-1 subtask-row';
-                row.innerHTML = `
-                    <span class="input-group-text bg-dark border-secondary text-secondary">↳</span>
-                    <input type="text" class="form-control bg-dark text-light border-secondary subtask-input" placeholder="Subtask description">
-                    <button type="button" class="btn btn-outline-danger btn-remove-subtask">✕</button>
-                `;
-                container.appendChild(row);
-                row.querySelector('input').focus();
-                return;
-            }
 
             const removeBtn = e.target.closest('.btn-remove-subtask');
             if (removeBtn) {
@@ -377,6 +371,7 @@ HTML_TEMPLATE = r"""
             }
         });
 
+        // Save New Task Handler
         document.addEventListener('click', function(e) {
             if (e.target && e.target.id === 'btn-save-task') {
                 const dateVal = document.getElementById('task-date').value;
@@ -384,17 +379,16 @@ HTML_TEMPLATE = r"""
                 const description = document.getElementById('task-desc').value.trim();
                 const rawTags = document.getElementById('task-tags-input').value.trim();
                 const fibScore = document.getElementById('task-fib-score').value;
+                const preserveSubtasks = document.getElementById('task-preserve-subtasks')?.checked;
 
                 if (!description) {
                     document.getElementById('task-desc').classList.add('is-invalid');
                     return;
                 }
 
-                // Single declaration of tags
                 let tags = rawTags ? rawTags.split(/\s+/).map(t => t.replace(/^#/, '')) : [];
-                if (fibScore) {
-                    tags.push(`fib:${fibScore}`);
-                }
+                if (fibScore) tags.push(`fib:${fibScore}`);
+                if (preserveSubtasks) tags.push('preserve_subtasks');
 
                 const subtaskInputs = document.querySelectorAll('#subtasks-container .subtask-input');
                 const subtasks = Array.from(subtaskInputs)
@@ -422,15 +416,14 @@ HTML_TEMPLATE = r"""
                     }
                 });
             }
-});
+        });
 
-        // Ensure create modal always opens with clean default state and today's date
+        // Reset Add Task Modal Date on Show
         document.addEventListener('show.bs.modal', function(e) {
             if (e.target && e.target.id === 'addTaskModal') {
                 const form = document.getElementById('create-task-form');
                 if (form) form.reset();
 
-                // Default the date field to today (YYYY-MM-DD)
                 const dateInput = document.getElementById('task-date');
                 if (dateInput) {
                     const today = new Date();
@@ -452,6 +445,8 @@ HTML_TEMPLATE = r"""
                 }
             }
         });
+
+        // Save Edit Task Handler
         document.addEventListener('click', function(e) {
             if (e.target && e.target.id === 'btn-update-task') {
                 const oldRaw = document.getElementById('edit-old-raw').value;
@@ -460,17 +455,16 @@ HTML_TEMPLATE = r"""
                 const description = document.getElementById('edit-task-desc').value.trim();
                 const rawTags = document.getElementById('edit-task-tags-input').value.trim();
                 const fibScore = document.getElementById('edit-task-fib-score').value;
+                const preserveSubtasks = document.getElementById('edit-task-preserve-subtasks')?.checked;
 
                 if (!description) {
                     document.getElementById('edit-task-desc').classList.add('is-invalid');
                     return;
                 }
 
-                // Single declaration of tags
                 let tags = rawTags ? rawTags.split(/\s+/).map(t => t.replace(/^#/, '')) : [];
-                if (fibScore) {
-                    tags.push(`fib:${fibScore}`);
-                }
+                if (fibScore) tags.push(`fib:${fibScore}`);
+                if (preserveSubtasks) tags.push('preserve_subtasks');
 
                 const subtaskInputs = document.querySelectorAll('#edit-subtasks-container .subtask-input');
                 const subtasks = Array.from(subtaskInputs)
@@ -480,13 +474,13 @@ HTML_TEMPLATE = r"""
                 fetch('/edit_task', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        old_raw: oldRaw,
-                        date: dateVal,
-                        symbol: symbol,
-                        description: description,
-                        tags: tags,
-                        subtasks: subtasks
+                    body: JSON.stringify({ 
+                        old_raw: oldRaw, 
+                        date: dateVal, 
+                        symbol: symbol, 
+                        description: description, 
+                        tags: tags, 
+                        subtasks: subtasks 
                     })
                 }).then(res => {
                     if (res.ok) {
@@ -499,7 +493,6 @@ HTML_TEMPLATE = r"""
             }
         });
     </script>
-    <!-- Inside HTML_TEMPLATE, above </body> -->
 
     <!-- Task Creation Modal -->
     <div class="modal fade" id="addTaskModal" tabindex="-1" aria-labelledby="addTaskModalLabel" aria-hidden="true">
@@ -508,9 +501,17 @@ HTML_TEMPLATE = r"""
                 <div class="modal-header border-secondary">
                     <h5 class="modal-title fs-6 fw-bold text-info" id="addTaskModalLabel">📌 Create Scheduled Task</h5>
                 </div>
-                <!-- Task Creation Modal Body -->
                 <div class="modal-body">
                     <form id="create-task-form">
+                        <div class="mb-3">
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" role="switch" id="task-preserve-subtasks" checked>
+                                <label class="form-check-label text-secondary small fw-bold" for="task-preserve-subtasks">
+                                    Keep completed subtasks in # Done
+                                </label>
+                            </div>
+                        </div>
+
                         <div class="mb-3">
                             <label class="form-label text-secondary small fw-bold">SCHEDULED DATE</label>
                             <input type="date" class="form-control bg-dark text-light border-secondary" id="task-date">
@@ -588,6 +589,15 @@ HTML_TEMPLATE = r"""
                     <form id="edit-task-form">
                         <input type="hidden" id="edit-old-raw">
                         
+                        <div class="mb-3">
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" role="switch" id="edit-task-preserve-subtasks">
+                                <label class="form-check-label text-secondary small fw-bold" for="edit-task-preserve-subtasks">
+                                    Keep completed subtasks in # Done
+                                </label>
+                            </div>
+                        </div>
+
                         <div class="mb-3">
                             <label class="form-label text-secondary small fw-bold">SCHEDULED DATE</label>
                             <input type="date" class="form-control bg-dark text-light border-secondary" id="edit-task-date">
@@ -695,14 +705,14 @@ PARTIAL_TEMPLATE = """
                                 {% endif %}
                             </td>
                             <td class="text-info fw-semibold align-top" style="white-space: nowrap;">{{ t.time or 'Flexible' }}</td>
-                          <td class="align-top">
-                            {% if t.contexts %}
-                                <span class="badge bg-secondary">@{{ t.contexts[0] }}</span>
-                            {% endif %}
-                            {% if t.fib_score %}
-                                <span class="badge bg-purple text-light border border-purple ms-1" style="background-color: #6b21a8;" title="Fibonacci Effort Score">⚡ {{ t.fib_score }}</span>
-                            {% endif %}
-                        </td>
+                            <td class="align-top">
+                                {% if t.contexts %}
+                                    <span class="badge bg-secondary">@{{ t.contexts[0] }}</span>
+                                {% endif %}
+                                {% if t.fib_score %}
+                                    <span class="badge bg-purple text-light border border-purple ms-1" style="background-color: #6b21a8;" title="Fibonacci Effort Score">⚡ {{ t.fib_score }}</span>
+                                {% endif %}
+                            </td>
                             <td class="align-top">
                                 <div class="task-title-cell {% if t.symbol == '?' %}text-muted fst-italic{% else %}fw-semibold{% endif %}">
                                     {{ t.title | render_links | safe }}
@@ -719,6 +729,7 @@ PARTIAL_TEMPLATE = """
                                                     <button 
                                                         data-parent="{{ t.title|forceescape }}" 
                                                         data-subtask="{{ sub|forceescape }}" 
+                                                        data-preserve="{{ 'true' if t.preserve_subtasks else 'false' }}"
                                                         class="btn btn-sm {% if 'focus' in t.tags %}btn-dark text-success border-success{% else %}btn-outline-success{% endif %} btn-complete-subtask py-0 px-2 fs-7"
                                                         data-bs-toggle="tooltip"
                                                         data-bs-placement="top"
@@ -731,7 +742,7 @@ PARTIAL_TEMPLATE = """
                             </td>
                             <td class="align-top">
                                 {% for tag in t.tags %}
-                                    {% if tag != 'focus' %}
+                                    {% if tag != 'focus' and tag != 'preserve_subtasks' and not tag.startswith('fib:') %}
                                         <span class="badge bg-dark border border-secondary text-light">#{{ tag }}</span>
                                     {% endif %}
                                 {% endfor %}
@@ -822,7 +833,6 @@ PARTIAL_TEMPLATE = """
                                     <span class="badge bg-secondary">@{{ t.contexts[0] }}</span>
                                 {% endif %}
                             </td>
-                            <!-- Main Table Row in PARTIAL_TEMPLATE -->
                             <td>
                                 <div class="{% if t.symbol == '?' %}text-muted fst-italic{% else %}fw-semibold{% endif %}">
                                     {{ t.title | render_links | safe }}
@@ -831,17 +841,15 @@ PARTIAL_TEMPLATE = """
                                     <ul class="list-unstyled ms-2 mt-2 mb-0 small">
                                         {% for sub in t.subtasks %}
                                             <li class="d-flex justify-content-between align-items-center mb-1 pb-1 border-bottom border-secondary-subtle">
-                                                <!-- Left column: Arrow + Text/Links -->
                                                 <span class="subtask-text-container me-3" title="{{ sub }}">
                                                     <span class="{% if 'focus' in t.tags %}text-dark{% else %}text-secondary{% endif %} me-1">↳</span> 
                                                     <span class="{% if 'focus' in t.tags %}text-dark{% else %}text-muted{% endif %}">{{ sub | render_links | safe }}</span>
                                                 </span>
-                                                
-                                                <!-- Right column: Standardized subtask button group -->
                                                 <div class="subtask-action-container flex-shrink-0">
                                                     <button 
                                                         data-parent="{{ t.title|forceescape }}" 
                                                         data-subtask="{{ sub|forceescape }}" 
+                                                        data-preserve="{{ 'true' if t.preserve_subtasks else 'false' }}"
                                                         class="btn btn-sm {% if 'focus' in t.tags %}btn-dark text-success border-success{% else %}btn-outline-success{% endif %} btn-complete-subtask py-0 px-2 fs-7"
                                                         data-bs-toggle="tooltip"
                                                         data-bs-placement="top"
@@ -854,7 +862,7 @@ PARTIAL_TEMPLATE = """
                             </td>
                             <td class="align-top">
                                 {% for tag in t.tags %}
-                                    {% if tag != 'focus' %}
+                                    {% if tag != 'focus' and tag != 'preserve_subtasks' and not tag.startswith('fib:') %}
                                         <span class="badge bg-dark border border-secondary text-light">#{{ tag }}</span>
                                     {% endif %}
                                 {% endfor %}
@@ -918,7 +926,9 @@ PARTIAL_TEMPLATE = """
                         <span class="fw-semibold">{{ t.title }}</span>
                         {% if t.contexts %}<span class="badge bg-secondary ms-2">@{{ t.contexts[0] }}</span>{% endif %}
                         {% for tag in t.tags %}
-                            <span class="badge bg-dark border border-secondary text-light ms-1">#{{ tag }}</span>
+                            {% if tag != 'focus' and tag != 'preserve_subtasks' and not tag.startswith('fib:') %}
+                                <span class="badge bg-dark border border-secondary text-light ms-1">#{{ tag }}</span>
+                            {% endif %}
                         {% endfor %}
                     </div>
                     <div class="btn-group btn-group-sm">
@@ -951,7 +961,9 @@ PARTIAL_TEMPLATE = """
                             <span>{{ t.title }}</span>
                             {% if t.contexts %}<span class="badge bg-secondary ms-2">@{{ t.contexts[0] }}</span>{% endif %}
                             {% for tag in t.tags %}
-                                <span class="badge bg-dark border border-secondary text-light ms-1">#{{ tag }}</span>
+                                {% if tag != 'focus' and tag != 'preserve_subtasks' and not tag.startswith('fib:') %}
+                                    <span class="badge bg-dark border border-secondary text-light ms-1">#{{ tag }}</span>
+                                {% endif %}
                             {% endfor %}
                         </div>
                         <div class="btn-group btn-group-sm">
@@ -1075,14 +1087,6 @@ def insert_date_at_front(raw_line: str, date_str: str) -> str:
         return f"{symbol} {date_str} {content}"
     return f"{date_str} {stripped}"
 
-import re
-
-# web_app.py
-
-# web_app.py
-import re
-import html
-
 def render_links(text: str) -> str:
     """
     Converts Markdown link syntax into HTML anchor tags supporting http, https, and custom schemes like obsidian://.
@@ -1091,10 +1095,8 @@ def render_links(text: str) -> str:
     if not text:
         return ""
 
-    # Unescape HTML entities first in case Jinja escaped & to &amp;
     text = html.unescape(text)
 
-    # Standard [Label](URL)
     pattern_std = r'\[([^\]]+)\]\((obsidian://[^\s)]+|https?://[^\s)]+)\)'
     text = re.sub(
         pattern_std, 
@@ -1102,7 +1104,6 @@ def render_links(text: str) -> str:
         text
     )
 
-    # Alternative (URL)[Label]
     pattern_alt = r'\((obsidian://[^\s)]+|https?://[^\s)]+)\)\[([^\]]+)\]'
     text = re.sub(
         pattern_alt, 
@@ -1323,9 +1324,10 @@ def toggle_focus():
 
 @app.route("/complete_subtask", methods=["POST"])
 def complete_subtask():
-    req_data = request.get_json()
+    req_data = request.get_json() or {}
     parent_title = req_data.get("parent_title")
     subtask_text = req_data.get("subtask")
+    preserve_subtasks = req_data.get("preserve_subtasks", True)
 
     if not parent_title or not subtask_text or not TASK_FILE.exists():
         return jsonify({"status": "error"}), 400
@@ -1333,24 +1335,29 @@ def complete_subtask():
     lines = TASK_FILE.read_text().splitlines()
     new_lines = []
     in_target_parent = False
+    completed_subtask_entry = None
 
     for line in lines:
         stripped = line.strip()
 
-        # Identify parent task line
         if stripped and stripped[0] in "!*?" and parent_title in line:
             in_target_parent = True
             new_lines.append(line)
             continue
 
-        # If inside target subtask block, check if this is the target subtask line to delete
         if in_target_parent and (line.startswith(" ") or line.startswith("\t")):
             if subtask_text in line:
-                continue  # Delete/drop this completed subtask line
+                completed_subtask_entry = f"✓ {subtask_text.strip()}"
+                continue
         elif stripped and stripped[0] in "!*?#":
             in_target_parent = False
 
         new_lines.append(line)
+
+    if preserve_subtasks and completed_subtask_entry:
+        if "# Done" not in new_lines:
+            new_lines.append("\n# Done")
+        new_lines.append(completed_subtask_entry)
 
     TASK_FILE.write_text("\n".join(new_lines) + "\n")
     return jsonify({"status": "ok"})
@@ -1363,9 +1370,12 @@ def complete_task():
     if not raw_line or not TASK_FILE.exists():
         return jsonify({"status": "error", "message": "Missing raw_line or task file"}), 400
 
-    # Delegate task manipulation directly to utils/board_etl.py
-    etl_complete_task(str(TASK_FILE), raw_line)
+    # Parse parent task line tags to determine subtask preservation setting
+    raw_tags = re.findall(r'#([\w-]+(?::[\w-]+)?)', raw_line)
+    tags = [t.lower() for t in raw_tags]
+    preserve_subtasks = ("preserve_subtasks" in tags) or ("keep_subtasks" in tags)
 
+    etl_complete_task(str(TASK_FILE), raw_line, preserve_subtasks=preserve_subtasks)
     return jsonify({"status": "ok"})
 
 @app.route("/make_today", methods=["POST"])

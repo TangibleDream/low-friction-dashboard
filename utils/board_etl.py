@@ -10,7 +10,7 @@ from rich.columns import Columns
 
 console = Console()
 
-def complete_task(file_path: str, raw_line: str) -> None:
+def complete_task(file_path: str, raw_line: str, preserve_subtasks: bool = True) -> None:
     path = Path(file_path)
     if not path.exists():
         return
@@ -101,7 +101,9 @@ def complete_task(file_path: str, raw_line: str) -> None:
             continue
         
         if removing and (line.startswith(" ") or line.startswith("\t")):
-            completed_block.append(line.strip())
+            # ONLY append subtask lines to completed_block if preserve_subtasks is True
+            if preserve_subtasks:
+                completed_block.append(line.strip())
             continue
         else:
             removing = False
@@ -348,6 +350,9 @@ def parse_tasks(file_path: str):
             raw_tags = re.findall(r'#([\w-]+(?::[\w-]+)?)', content)
             tags = [t.lower() for t in raw_tags]
 
+            # Check if task explicitly requests subtask retention in # Done
+            preserve_subtasks = ("preserve_subtasks" in tags) or ("keep_subtasks" in tags)
+
             # Extract fibonacci score if present (e.g., #fib:3 -> '3')
             fib_score = None
             for tag in tags:
@@ -374,16 +379,17 @@ def parse_tasks(file_path: str):
 
             # Include 'fib_score' in current_task dictionary:
             current_task = {
-                'symbol': symbol,
-                'title': clean_title,
-                'time': time_str or date_str,
-                'parsed_date': parsed_dt,
-                'contexts': contexts,
-                'tags': tags,
-                'fib_score': fib_score,
-                'subtasks': [],
-                'raw': stripped
-            }
+    'symbol': symbol,
+    'title': clean_title,
+    'time': time_str or date_str,
+    'parsed_date': parsed_dt,
+    'contexts': contexts,
+    'tags': tags,
+    'fib_score': fib_score,
+    'preserve_subtasks': preserve_subtasks,
+    'subtasks': [],
+    'raw': stripped
+}
 
             if parsed_dt and parsed_dt.date() > today_date:
                 future_tasks.append(current_task)

@@ -213,6 +213,27 @@ def test_complete_subtask_toggle_behavior(client, toggle_state, expected_moved):
         # Not moved to # Done
         assert "✓ Senior SDET at Acme" not in content
 
+def test_complete_subtask_with_embedded_markdown_link(client):
+    test_client, test_file = client
+    now = datetime.now()
+    today_str = f"{now.month}/{now.day}"
+
+    parent_line = f"* {today_str} Google @home"
+    sub_line = "Review [Google](https://www.google.com)"
+    test_file.write_text(f"{parent_line}\n  * {sub_line}\n\n# Done\n")
+
+    response = test_client.post('/complete_subtask', json={
+        "parent_title": "Google",
+        "subtask": sub_line,
+        "preserve_subtasks": False
+    })
+
+    assert response.status_code == 200
+    content = test_file.read_text()
+
+    # Subtask line must be removed from tasks.txt
+    assert "https://www.google.com" not in content
+
 @pytest.mark.parametrize("toggle_state,expected_moved", [
     (True, True),   # Yes -> #preserve_subtasks tag present, subtasks moved to Done
     (False, False)  # No -> Tag omitted, subtasks discarded
@@ -266,6 +287,39 @@ def test_complete_subtask_with_single_quote(client):
     # Parent task stays open in place
     assert "6 guitar net 2 pieces" in file_content
     assert "x * " not in file_content
+
+def test_complete_subtask_with_markdown_link(client):
+    test_client, test_file = client
+    now = datetime.now()
+    today_str = f"{now.month}/{now.day}"
+
+    parent_line = f"* {today_str} Documentation Work"
+    sub_line = "Review [Google](https://www.google.com)"
+    test_file.write_text(f"{parent_line}\n  * {sub_line}\n\n# Done\n")
+
+    response = test_client.post('/complete_subtask', json={
+        "parent_title": "Documentation Work",
+        "subtask": sub_line,
+        "preserve_subtasks": False
+    })
+
+    assert response.status_code == 200
+    content = test_file.read_text()
+    assert sub_line not in content
+
+def test_future_task_renders_links_and_does_not_spill(client):
+    test_client, test_file = client
+    
+    # Seed a future task with a link to trigger the future tasks template block
+    test_file.write_text("* 12/31 Future Task [Google](https://www.google.com)\n\n# Done\n")
+
+    response = test_client.get('/')
+    assert response.status_code == 200
+    html_content = response.get_data(as_text=True)
+
+    # Confirm truncation class and parsed link are present in the rendered HTML
+    assert "text-truncate" in html_content
+    assert "https://www.google.com" in html_content
 
 def test_edit_future_task_route(client):
     test_client, test_file = client

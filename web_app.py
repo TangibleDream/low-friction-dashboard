@@ -3,7 +3,7 @@ import time
 import html
 from pathlib import Path
 from flask import Flask, render_template_string, Response, request, jsonify
-from utils.board_etl import(
+from utils.board_etl import (
     complete_task as etl_complete_task, 
     delete_line,
     make_line_today,
@@ -34,51 +34,13 @@ HTML_TEMPLATE = r"""
         .badge-fluid { background-color: #06b6d4; }
         .badge-arbitrary { background-color: #f59e0b; color: #000; }
         .btn-complete { padding: 0.1rem 0.4rem; font-size: 0.75rem; border-radius: 0.25rem; }
-        /* Table Layout Locking */
-        .table-fixed {
-            table-layout: fixed;
-            width: 100%;
-        }
-
-        /* Ensure Type and Time cells never collapse or overflow */
-        .table-fixed td:first-child, 
-        .table-fixed td:nth-child(2) {
-            white-space: nowrap;
-            overflow: hidden;
-        }
-
-        /* Task Title Styling */
-        .task-title-cell {
-            word-break: break-word;
-            overflow-wrap: anywhere;
-        }
-
-        /* Subtask Container */
-        .subtask-text-container {
-            min-width: 0;
-            flex-grow: 1;
-            word-break: break-word;
-            overflow-wrap: anywhere;
-        }
-
-        .subtask-action-container {
-            display: inline-flex;
-            align-items: center;
-            justify-content: flex-end;
-            min-width: 75px;
-        }
-
-        .btn-complete-subtask {
-            font-weight: 600;
-            line-height: 1.4;
-            transition: all 0.15s ease-in-out;
-        }
-
-        /* Give main action button group enough horizontal space */
-        .action-cell {
-            width: 350px !important;
-            white-space: nowrap;
-        }
+        .table-fixed { table-layout: fixed; width: 100%; }
+        .table-fixed td:first-child, .table-fixed td:nth-child(2) { white-space: nowrap; overflow: hidden; }
+        .task-title-cell { word-break: break-word; overflow-wrap: anywhere; }
+        .subtask-text-container { min-width: 0; flex-grow: 1; word-break: break-word; overflow-wrap: anywhere; }
+        .subtask-action-container { display: inline-flex; align-items: center; justify-content: flex-end; min-width: 75px; }
+        .btn-complete-subtask { font-weight: 600; line-height: 1.4; transition: all 0.15s ease-in-out; }
+        .action-cell { width: 350px !important; white-space: nowrap; }
     </style>
 </head>
 <body class="text-light py-4">
@@ -98,7 +60,18 @@ HTML_TEMPLATE = r"""
     <script>
         let evtSource;
         
+        function disposeTooltips() {
+            const tooltips = document.querySelectorAll('.tooltip');
+            tooltips.forEach(t => t.remove());
+            const elements = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+            elements.forEach(el => {
+                const instance = bootstrap.Tooltip.getInstance(el);
+                if (instance) instance.dispose();
+            });
+        }
+
         function refreshDashboard() {
+            disposeTooltips();
             fetch('/partial')
                 .then(res => {
                     if (res.ok) return res.text();
@@ -113,6 +86,14 @@ HTML_TEMPLATE = r"""
                 })
                 .catch(err => console.error("Auto-refresh error:", err));
         }
+
+        document.addEventListener('click', function(e) {
+            const btn = e.target.closest('button');
+            if (btn) {
+                const tooltip = bootstrap.Tooltip.getInstance(btn);
+                if (tooltip) tooltip.hide();
+            }
+        });
 
         document.addEventListener('visibilitychange', function() {
             if (document.visibilityState === 'visible') {
@@ -266,7 +247,6 @@ HTML_TEMPLATE = r"""
             }
         });
 
-        // Open Edit Modal Listener
         document.addEventListener('click', function(e) {
             const editBtn = e.target.closest('.btn-edit-task');
             if (editBtn) {
@@ -294,7 +274,6 @@ HTML_TEMPLATE = r"""
                 }
 
                 if (!oldRawEl || !dateEl || !typeEl || !descEl || !tagsEl) {
-                    console.error("Edit modal elements missing from DOM");
                     return;
                 }
 
@@ -344,7 +323,6 @@ HTML_TEMPLATE = r"""
             }
         });
 
-        // Add / Remove Subtask Input Fields
         document.addEventListener('click', function(e) {
             if (e.target && (e.target.id === 'btn-add-subtask-field' || e.target.id === 'btn-add-edit-subtask-field')) {
                 const containerId = e.target.id === 'btn-add-subtask-field' ? 'subtasks-container' : 'edit-subtasks-container';
@@ -371,7 +349,6 @@ HTML_TEMPLATE = r"""
             }
         });
 
-        // Save New Task Handler
         document.addEventListener('click', function(e) {
             if (e.target && e.target.id === 'btn-save-task') {
                 const dateVal = document.getElementById('task-date').value;
@@ -418,7 +395,6 @@ HTML_TEMPLATE = r"""
             }
         });
 
-        // Reset Add Task Modal Date on Show
         document.addEventListener('show.bs.modal', function(e) {
             if (e.target && e.target.id === 'addTaskModal') {
                 const form = document.getElementById('create-task-form');
@@ -446,7 +422,6 @@ HTML_TEMPLATE = r"""
             }
         });
 
-        // Save Edit Task Handler
         document.addEventListener('click', function(e) {
             if (e.target && e.target.id === 'btn-update-task') {
                 const oldRaw = document.getElementById('edit-old-raw').value;
@@ -920,10 +895,10 @@ PARTIAL_TEMPLATE = """
     <div class="card-body p-0">
         <ul class="list-group list-group-flush border-bottom border-secondary">
             {% for t in data.future[:3] %}
-                <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center">
-                    <div>
+                <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center gap-3">
+                    <div class="text-truncate flex-grow-1 min-w-0">
                         <span class="badge bg-info text-dark me-2">{{ t.time }}</span>
-                        <span class="fw-semibold">{{ t.title }}</span>
+                        <span class="fw-semibold">{{ t.title | render_links | safe }}</span>
                         {% if t.contexts %}<span class="badge bg-secondary ms-2">@{{ t.contexts[0] }}</span>{% endif %}
                         {% for tag in t.tags %}
                             {% if tag != 'focus' and tag != 'preserve_subtasks' and not tag.startswith('fib:') %}
@@ -931,7 +906,7 @@ PARTIAL_TEMPLATE = """
                             {% endif %}
                         {% endfor %}
                     </div>
-                    <div class="btn-group btn-group-sm">
+                    <div class="btn-group btn-group-sm flex-shrink-0">
                         <button 
                             data-raw="{{ t.raw|forceescape }}"
                             data-title="{{ t.title|forceescape }}"
@@ -955,10 +930,10 @@ PARTIAL_TEMPLATE = """
         <div class="collapse" id="futureCollapse">
             <ul class="list-group list-group-flush">
                 {% for t in data.future[3:] %}
-                    <li class="list-group-item bg-transparent text-muted border-secondary d-flex justify-content-between align-items-center">
-                        <div>
+                    <li class="list-group-item bg-transparent text-muted border-secondary d-flex justify-content-between align-items-center gap-3">
+                        <div class="text-truncate flex-grow-1 min-w-0">
                             <span class="badge bg-secondary me-2">{{ t.time }}</span>
-                            <span>{{ t.title }}</span>
+                            <span>{{ t.title | render_links | safe }}</span>
                             {% if t.contexts %}<span class="badge bg-secondary ms-2">@{{ t.contexts[0] }}</span>{% endif %}
                             {% for tag in t.tags %}
                                 {% if tag != 'focus' and tag != 'preserve_subtasks' and not tag.startswith('fib:') %}
@@ -966,7 +941,8 @@ PARTIAL_TEMPLATE = """
                                 {% endif %}
                             {% endfor %}
                         </div>
-                        <div class="btn-group btn-group-sm">
+
+                        <div class="btn-group btn-group-sm flex-shrink-0">
                             <button 
                                 data-raw="{{ t.raw|forceescape }}"
                                 data-title="{{ t.title|forceescape }}"
@@ -992,7 +968,6 @@ PARTIAL_TEMPLATE = """
 {% endif %}
 
 <div class="row g-4 mb-4">
-    <!-- Low-Hanging Fruit -->
     <div class="col-md-6">
         <div class="card h-100 border-success shadow-sm">
             <div class="card-header bg-success text-white fw-bold">
@@ -1016,7 +991,6 @@ PARTIAL_TEMPLATE = """
         </div>
     </div>
 
-    <!-- Gap Fillers -->
     <div class="col-md-6">
         <div class="card h-100 border-warning shadow-sm">
             <div class="card-header bg-warning text-dark fw-bold">
@@ -1055,7 +1029,6 @@ PARTIAL_TEMPLATE = """
     </div>
 </div>
 
-<!-- Collapsible Completed Items Panel -->
 {% if data.completed %}
 <div class="card border-secondary">
     <div class="card-header bg-dark text-muted d-flex justify-content-between align-items-center">
@@ -1088,10 +1061,6 @@ def insert_date_at_front(raw_line: str, date_str: str) -> str:
     return f"{date_str} {stripped}"
 
 def render_links(text: str) -> str:
-    """
-    Converts Markdown link syntax into HTML anchor tags supporting http, https, and custom schemes like obsidian://.
-    Handles standard [Label](URL) and (URL)[Label] patterns.
-    """
     if not text:
         return ""
 
@@ -1127,7 +1096,7 @@ def index():
 
 @app.route("/add_task", methods=["POST"])
 def add_task():
-    req_data = request.get_json()
+    req_data = request.get_json() or {}
     symbol = req_data.get("symbol", "*")
     description = req_data.get("description", "").strip()
     tags = req_data.get("tags", [])
@@ -1171,6 +1140,90 @@ def add_task():
 
     if not inserted:
         new_lines.extend(task_block)
+
+    TASK_FILE.write_text("\n".join(new_lines) + "\n")
+    return jsonify({"status": "ok"})
+
+@app.route("/complete_task", methods=["POST"])
+def complete_task():
+    req_data = request.get_json() or {}
+    raw_line = req_data.get("raw_line")
+
+    if not raw_line or not TASK_FILE.exists():
+        return jsonify({"status": "error", "message": "Missing raw_line or task file"}), 400
+
+    raw_tags = re.findall(r'#([\w-]+(?::[\w-]+)?)', raw_line)
+    tags = [t.lower() for t in raw_tags]
+    preserve_subtasks = ("preserve_subtasks" in tags) or ("keep_subtasks" in tags)
+
+    etl_complete_task(str(TASK_FILE), raw_line, preserve_subtasks=preserve_subtasks)
+    return jsonify({"status": "ok"})
+
+@app.route("/complete_subtask", methods=["POST"])
+def complete_subtask():
+    req_data = request.get_json() or {}
+    parent_title = req_data.get("parent_title")
+    subtask_text = req_data.get("subtask")
+    preserve_subtasks = req_data.get("preserve_subtasks", True)
+
+    if not parent_title or not subtask_text or not TASK_FILE.exists():
+        return jsonify({"status": "error"}), 400
+
+    target_parent = html.unescape(parent_title).strip().lower()
+    raw_subtask = html.unescape(subtask_text).strip().lower()
+    clean_subtask = re.sub(r'<[^>]+>', '', raw_subtask).strip()
+
+    lines = TASK_FILE.read_text().splitlines()
+    new_lines = []
+    in_target_parent = False
+    completed_subtask_entry = None
+
+    for line in lines:
+        # 1. Indented lines MUST be checked FIRST as subtasks
+        if in_target_parent and (line.startswith(" ") or line.startswith("\t")):
+            stripped_sub = line.strip()
+            clean_line_sub = re.sub(r'^\*\s*', '', stripped_sub).lower()
+            plain_file_sub = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', clean_line_sub)
+
+            if (raw_subtask == clean_line_sub) or \
+               (raw_subtask in clean_line_sub) or \
+               (clean_subtask in clean_line_sub) or \
+               (clean_subtask in plain_file_sub) or \
+               (plain_file_sub in raw_subtask):
+                completed_subtask_entry = f"✓ {stripped_sub.lstrip('* ')}"
+                continue  # Drop subtask line from parent task block
+
+            new_lines.append(line)
+            continue
+
+        stripped = line.strip()
+
+        # 2. Check if top-level line starts a parent task
+        if stripped and stripped[0] in "!*?":
+            clean_parent_line = re.sub(r'^[!*?]\s*', '', stripped)
+            clean_parent_line = re.sub(r'^\d{1,2}/\d{1,2}\s*', '', clean_parent_line)
+            clean_parent_line = re.sub(r'\s+[@#]\S+', '', clean_parent_line).strip().lower()
+
+            if (target_parent in clean_parent_line) or \
+               (clean_parent_line in target_parent) or \
+               all(word in clean_parent_line for word in target_parent.split()):
+                in_target_parent = True
+            else:
+                in_target_parent = False
+
+            new_lines.append(line)
+            continue
+
+        # Reset context on section headers
+        if stripped and stripped.startswith("#"):
+            in_target_parent = False
+
+        new_lines.append(line)
+
+    if preserve_subtasks and completed_subtask_entry:
+        if "# Done" not in new_lines:
+            new_lines.append("\n# Done")
+        new_lines.append(completed_subtask_entry)
 
     TASK_FILE.write_text("\n".join(new_lines) + "\n")
     return jsonify({"status": "ok"})
@@ -1249,7 +1302,6 @@ def export_ics():
     time_str = request.args.get("time")
 
     ics_data = generate_task_ics(title=title, date_str=date_str, time_str=time_str)
-    
     safe_filename = re.sub(r'[^a-zA-Z0-9]', '_', title).lower()[:20] or "task"
     
     return Response(
@@ -1257,6 +1309,26 @@ def export_ics():
         mimetype="text/calendar",
         headers={"Content-Disposition": f"attachment; filename={safe_filename}.ics"}
     )
+
+@app.route("/make_today", methods=["POST"])
+def make_today():
+    req_data = request.get_json() or {}
+    raw_line = req_data.get("raw_line")
+
+    if not raw_line or not TASK_FILE.exists():
+        return jsonify({"status": "error"}), 400
+
+    lines = TASK_FILE.read_text().splitlines()
+    new_lines = []
+
+    for line in lines:
+        if line.strip() == raw_line.strip():
+            new_lines.append(make_line_today(line))
+        else:
+            new_lines.append(line)
+
+    TASK_FILE.write_text("\n".join(new_lines) + "\n")
+    return jsonify({"status": "ok"})
 
 @app.route("/move_to_bottom", methods=["POST"])
 def move_to_bottom():
@@ -1277,7 +1349,7 @@ def partial():
 
 @app.route("/shift_task", methods=["POST"])
 def shift_task():
-    req_data = request.get_json()
+    req_data = request.get_json() or {}
     raw_line = req_data.get("raw_line")
 
     if not raw_line or not TASK_FILE.exists():
@@ -1305,97 +1377,19 @@ def stream():
                 if mtime > last_mtime:
                     last_mtime = mtime
                     yield "data: reload\n\n"
-            
-            yield ": keep-alive\n\n"
             time.sleep(0.5)
 
     return Response(event_stream(), mimetype="text/event-stream")
 
 @app.route("/toggle_focus", methods=["POST"])
 def toggle_focus():
-    req_data = request.get_json()
+    req_data = request.get_json() or {}
     raw_line = req_data.get("raw_line")
 
     if not raw_line or not TASK_FILE.exists():
         return jsonify({"status": "error"}), 400
 
     toggle_line_focus(str(TASK_FILE), raw_line)
-    return jsonify({"status": "ok"})
-
-@app.route("/complete_subtask", methods=["POST"])
-def complete_subtask():
-    req_data = request.get_json() or {}
-    parent_title = req_data.get("parent_title")
-    subtask_text = req_data.get("subtask")
-    preserve_subtasks = req_data.get("preserve_subtasks", True)
-
-    if not parent_title or not subtask_text or not TASK_FILE.exists():
-        return jsonify({"status": "error"}), 400
-
-    lines = TASK_FILE.read_text().splitlines()
-    new_lines = []
-    in_target_parent = False
-    completed_subtask_entry = None
-
-    for line in lines:
-        stripped = line.strip()
-
-        if stripped and stripped[0] in "!*?" and parent_title in line:
-            in_target_parent = True
-            new_lines.append(line)
-            continue
-
-        if in_target_parent and (line.startswith(" ") or line.startswith("\t")):
-            if subtask_text in line:
-                completed_subtask_entry = f"✓ {subtask_text.strip()}"
-                continue
-        elif stripped and stripped[0] in "!*?#":
-            in_target_parent = False
-
-        new_lines.append(line)
-
-    if preserve_subtasks and completed_subtask_entry:
-        if "# Done" not in new_lines:
-            new_lines.append("\n# Done")
-        new_lines.append(completed_subtask_entry)
-
-    TASK_FILE.write_text("\n".join(new_lines) + "\n")
-    return jsonify({"status": "ok"})
-
-@app.route("/complete_task", methods=["POST"])
-def complete_task():
-    req_data = request.get_json() or {}
-    raw_line = req_data.get("raw_line")
-
-    if not raw_line or not TASK_FILE.exists():
-        return jsonify({"status": "error", "message": "Missing raw_line or task file"}), 400
-
-    # Parse parent task line tags to determine subtask preservation setting
-    raw_tags = re.findall(r'#([\w-]+(?::[\w-]+)?)', raw_line)
-    tags = [t.lower() for t in raw_tags]
-    preserve_subtasks = ("preserve_subtasks" in tags) or ("keep_subtasks" in tags)
-
-    etl_complete_task(str(TASK_FILE), raw_line, preserve_subtasks=preserve_subtasks)
-    return jsonify({"status": "ok"})
-
-@app.route("/make_today", methods=["POST"])
-def make_today():
-    req_data = request.get_json()
-    raw_line = req_data.get("raw_line")
-
-    if not raw_line or not TASK_FILE.exists():
-        return jsonify({"status": "error"}), 400
-
-    lines = TASK_FILE.read_text().splitlines()
-    new_lines = []
-
-    for line in lines:
-        if line.strip() == raw_line.strip():
-            new_lines.append(make_line_today(line))
-        else:
-            new_lines.append(line)
-
-    TASK_FILE.write_text("\n".join(new_lines) + "\n")
     return jsonify({"status": "ok"})
 
 if __name__ == "__main__":

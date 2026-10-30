@@ -34,13 +34,118 @@ HTML_TEMPLATE = r"""
         .badge-fluid { background-color: #06b6d4; }
         .badge-arbitrary { background-color: #f59e0b; color: #000; }
         .btn-complete { padding: 0.1rem 0.4rem; font-size: 0.75rem; border-radius: 0.25rem; }
-        .table-fixed { table-layout: fixed; width: 100%; }
-        .table-fixed td:first-child, .table-fixed td:nth-child(2) { white-space: nowrap; overflow: hidden; }
-        .task-title-cell { word-break: break-word; overflow-wrap: anywhere; }
-        .subtask-text-container { min-width: 0; flex-grow: 1; word-break: break-word; overflow-wrap: anywhere; }
-        .subtask-action-container { display: inline-flex; align-items: center; justify-content: flex-end; min-width: 75px; }
-        .btn-complete-subtask { font-weight: 600; line-height: 1.4; transition: all 0.15s ease-in-out; }
-        .action-cell { width: 350px !important; white-space: nowrap; }
+
+        /* Desktop Standard Layout (>= 992px) */
+        .table-fixed {
+            table-layout: fixed;
+            width: 100%;
+        }
+
+        .table-fixed th, .table-fixed td {
+            vertical-align: top;
+        }
+
+        .task-title-cell {
+            word-break: break-word;
+            overflow-wrap: anywhere;
+        }
+
+        .subtask-text-container {
+            min-width: 0;
+            flex-grow: 1;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+        }
+
+        .subtask-action-container {
+            display: inline-flex;
+            align-items: center;
+            justify-content: flex-end;
+            min-width: 75px;
+        }
+
+        .btn-complete-subtask {
+            font-weight: 600;
+            line-height: 1.4;
+            transition: all 0.15s ease-in-out;
+        }
+
+        .action-cell {
+            width: 320px !important;
+            white-space: nowrap;
+        }
+
+        /* Medium Displays & Foldables (Landscape / Unfolded: < 992px) */
+        @media (max-width: 991px) {
+            .table-fixed {
+                table-layout: auto !important;
+            }
+
+            th, td {
+                white-space: normal !important;
+            }
+
+            .action-cell {
+                width: auto !important;
+            }
+
+            .mobile-action-grid {
+                display: grid !important;
+                grid-template-columns: repeat(3, 1fr) !important;
+                gap: 0.25rem !important;
+                width: 100% !important;
+            }
+
+            .mobile-action-grid .btn {
+                padding: 0.3rem 0.2rem !important;
+                font-size: 0.75rem !important;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+        }
+
+        /* Narrow Phone Displays (Single Screen / Outer Foldable: < 576px) */
+        @media (max-width: 575px) {
+            .table-responsive table, 
+            .table-responsive thead, 
+            .table-responsive tbody, 
+            .table-responsive th, 
+            .table-responsive td, 
+            .table-responsive tr { 
+                display: block !important; 
+            }
+
+            .table-responsive thead {
+                display: none !important; /* Hide column headers on mobile card layout */
+            }
+
+            .table-responsive tr.task-row {
+                margin-bottom: 0.75rem;
+                border: 1px solid #334155 !important;
+                border-radius: 0.5rem;
+                padding: 0.75rem;
+                background-color: #1e293b;
+            }
+
+            .table-responsive td {
+                padding: 0.25rem 0 !important;
+                border: none !important;
+            }
+
+            /* Top Row: Type, Date, Context side-by-side */
+            .mobile-meta-row {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                margin-bottom: 0.5rem;
+            }
+
+            .mobile-action-grid {
+                grid-template-columns: repeat(3, 1fr) !important;
+                margin-top: 0.5rem;
+            }
+        }
     </style>
 </head>
 <body class="text-light py-4">
@@ -655,12 +760,12 @@ PARTIAL_TEMPLATE = """
             <table class="table table-dark table-hover m-0 align-middle table-fixed">
                 <thead>
                     <tr class="text-secondary">
-                        <th style="width: 12%">Type</th>
-                        <th style="width: 10%">Time / Date</th>
-                        <th style="width: 10%">Context</th>
-                        <th style="width: 30%">Task Description</th>
-                        <th style="width: 10%">Tags</th>
-                        <th style="width: 28%" class="action-cell text-end">Action</th>
+                        <th class="col-type" style="width: 12%">Type</th>
+                        <th class="col-time" style="width: 10%"><span class="d-none d-md-inline">Time / Date</span><span class="d-inline d-md-none">Time</span></th>
+                        <th class="col-context" style="width: 10%"><span class="d-none d-md-inline">Context</span><span class="d-inline d-md-none">Ctx</span></th>
+                        <th class="col-desc" style="width: 30%">Task Description</th>
+                        <th class="col-tags" style="width: 10%">Tags</th>
+                        <th class="col-action action-cell text-end" style="width: 28%">Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -724,7 +829,7 @@ PARTIAL_TEMPLATE = """
                             </td>
                             <td class="align-top action-cell text-end" style="white-space: nowrap;">
                                 {% if 'focus' in t.tags %}
-                                <div class="btn-group btn-group-sm">
+                                <div class="btn-group btn-group-sm mobile-action-grid">
                                     <button 
                                         data-raw="{{ t.raw|forceescape }}"
                                         data-title="{{ t.title|forceescape }}"
@@ -736,6 +841,7 @@ PARTIAL_TEMPLATE = """
                                         data-bs-toggle="tooltip"
                                         data-bs-placement="top"
                                         title="Edit task">✏️</button>
+
                                     {% if t.time %}
                                         <a 
                                             href="/export_ics?title={{ t.title|urlencode }}&date={{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.today_iso }}&time={{ t.time|urlencode if t.time else '' }}" 
@@ -759,14 +865,14 @@ PARTIAL_TEMPLATE = """
                                         class="btn btn-dark text-warning border-warning btn-shift-task"
                                         data-bs-toggle="tooltip"
                                         data-bs-placement="top"
-                                        title="Shift to tomorrow">➡️ Tomorrow</button>
+                                        title="Shift to tomorrow">➡️ <span class="d-none d-md-inline">Tomorrow</span></button>
 
                                     <button 
                                         data-raw="{{ t.raw|forceescape }}" 
                                         class="btn btn-dark text-success border-success btn-complete-task"
                                         data-bs-toggle="tooltip"
                                         data-bs-placement="top"
-                                        title="Mark task completed">✓ Done</button>
+                                        title="Mark task completed">✓ <span class="d-none d-md-inline">Done</span></button>
 
                                     <button 
                                         type="button" 

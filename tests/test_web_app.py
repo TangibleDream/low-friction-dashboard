@@ -131,8 +131,10 @@ def test_complete_daily_task_route(client):
     assert response.status_code == 200
 
     content = test_file.read_text()
-    tomorrow = datetime.now()
-    tomorrow_str = f"{datetime.now().month}/{datetime.now().day + 1}"
+    
+    # Calculate tomorrow using real timedelta calendar arithmetic
+    tomorrow_dt = datetime.now() + timedelta(days=1)
+    tomorrow_str = f"{tomorrow_dt.month}/{tomorrow_dt.day}"
 
     # Confirm recurring task spawned for tomorrow
     assert f"* {tomorrow_str} Check for ripe figs #Daily" in content

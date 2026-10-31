@@ -891,38 +891,72 @@ PARTIAL_TEMPLATE = """
 
             {% if data.today|length > 10 %}
             <div class="collapse" id="todayCollapse">
-                <table class="table table-dark table-hover m-0 align-middle border-top border-secondary">
+                <table class="table table-dark table-hover m-0 align-middle table-fixed border-top border-secondary">
+                    <thead>
+                        <tr class="text-secondary d-none">
+                            <th class="col-type" style="width: 12%">Type</th>
+                            <th class="col-time" style="width: 10%">Time</th>
+                            <th class="col-context" style="width: 10%">Context</th>
+                            <th class="col-desc" style="width: 30%">Task Description</th>
+                            <th class="col-tags" style="width: 10%">Tags</th>
+                            <th class="col-action action-cell text-end" style="width: 28%">Action</th>
+                        </tr>
+                    </thead>
                     <tbody>
                         {% for t in data.today[10:] %}
                         <tr class="task-row {% if 'focus' in t.tags %}table-primary text-light fw-bold border-start border-4 border-info{% endif %}"
                             data-raw="{{ t.raw|forceescape }}"
                             style="cursor: pointer;">
-                            <td style="width: 12%" class="align-top">
-                                {% if 'focus' in t.tags %}
-                                    <span class="badge bg-info text-dark">🎯 IN FOCUS</span>
-                                {% elif t.symbol == '!' %}
-                                    <span class="badge badge-strong">STRONG</span>
-                                {% elif t.symbol == '?' %}
-                                    <span class="badge badge-arbitrary">ARBITRARY</span>
-                                {% else %}
-                                    <span class="badge badge-fluid">FLUID</span>
-                                {% endif %}
+                            
+                            <!-- Type / Meta Column -->
+                            <td class="align-top" style="width: 12%">
+                                <div class="mobile-meta-row">
+                                    {% if 'focus' in t.tags %}
+                                        <span class="badge bg-info text-dark fw-bold px-2 py-1">🎯 IN FOCUS</span>
+                                    {% elif t.symbol == '!' %}
+                                        <span class="badge badge-strong">STRONG</span>
+                                    {% elif t.symbol == '?' %}
+                                        <span class="badge badge-arbitrary">ARBITRARY</span>
+                                    {% else %}
+                                        <span class="badge badge-fluid">FLUID</span>
+                                    {% endif %}
+
+                                    <span class="text-info fw-semibold ms-1 d-sm-none" style="white-space: nowrap;">{{ t.time or 'Flexible' }}</span>
+
+                                    {% if t.contexts %}
+                                        <span class="badge bg-secondary ms-1 d-sm-none">@{{ t.contexts[0] }}</span>
+                                    {% endif %}
+                                    {% if t.fib_score %}
+                                        <span class="badge bg-purple text-light border border-purple ms-1 d-sm-none" style="background-color: #6b21a8;" title="Fibonacci Effort Score">⚡ {{ t.fib_score }}</span>
+                                    {% endif %}
+                                </div>
                             </td>
-                            <td style="width: 18%" class="text-info fw-semibold align-top">{{ t.time or 'Flexible' }}</td>
-                            <td style="width: 12%" class="align-top">
+
+                            <!-- Time / Date Column -->
+                            <td class="text-info fw-semibold align-top d-none d-sm-table-cell" style="width: 10%; white-space: nowrap;">
+                                {{ t.time or 'Flexible' }}
+                            </td>
+
+                            <!-- Context Column -->
+                            <td class="align-top d-none d-sm-table-cell" style="width: 10%">
                                 {% if t.contexts %}
                                     <span class="badge bg-secondary">@{{ t.contexts[0] }}</span>
                                 {% endif %}
+                                {% if t.fib_score %}
+                                    <span class="badge bg-purple text-light border border-purple ms-1" style="background-color: #6b21a8;" title="Fibonacci Effort Score">⚡ {{ t.fib_score }}</span>
+                                {% endif %}
                             </td>
-                            <td>
-                                <div class="{% if t.symbol == '?' %}text-muted fst-italic{% else %}fw-semibold{% endif %}">
+
+                            <!-- Description Column -->
+                            <td class="align-top" style="width: 30%">
+                                <div class="task-title-cell {% if t.symbol == '?' %}text-muted fst-italic{% else %}fw-semibold{% endif %}">
                                     {{ t.title | render_links | safe }}
                                 </div>
                                 {% if t.subtasks %}
-                                    <ul class="list-unstyled ms-2 mt-2 mb-0 small">
+                                    <ul class="list-unstyled ms-1 mt-2 mb-0 small">
                                         {% for sub in t.subtasks %}
-                                            <li class="d-flex justify-content-between align-items-center mb-1 pb-1 border-bottom border-secondary-subtle">
-                                                <span class="subtask-text-container me-3" title="{{ sub }}">
+                                            <li class="d-flex justify-content-between align-items-center mb-1 pb-1 border-bottom border-secondary-subtle gap-2">
+                                                <span class="subtask-text-container">
                                                     <span class="{% if 'focus' in t.tags %}text-dark{% else %}text-secondary{% endif %} me-1">↳</span> 
                                                     <span class="{% if 'focus' in t.tags %}text-dark{% else %}text-muted{% endif %}">{{ sub | render_links | safe }}</span>
                                                 </span>
@@ -941,22 +975,64 @@ PARTIAL_TEMPLATE = """
                                     </ul>
                                 {% endif %}
                             </td>
-                            <td class="align-top">
+
+                            <!-- Tags Column -->
+                            <td class="align-top" style="width: 10%">
                                 {% for tag in t.tags %}
                                     {% if tag != 'focus' and tag != 'preserve_subtasks' and not tag.startswith('fib:') %}
-                                        <span class="badge bg-dark border border-secondary text-light">#{{ tag }}</span>
+                                        <span class="badge bg-dark border border-secondary text-light mb-1">#{{ tag }}</span>
                                     {% endif %}
                                 {% endfor %}
                             </td>
-                            <td style="width: 12%" class="align-top text-end">
+
+                            <!-- Action Column -->
+                            <td class="align-top action-cell text-end" style="width: 28%">
                                 {% if 'focus' in t.tags %}
-                                <div class="btn-group btn-group-sm">
+                                <div class="btn-group btn-group-sm mobile-action-grid">
+                                    <button 
+                                        data-raw="{{ t.raw|forceescape }}"
+                                        data-title="{{ t.title|forceescape }}"
+                                        data-symbol="{{ t.symbol }}"
+                                        data-date="{{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.today_iso }}"
+                                        data-tags="{{ t.tags|join(' ') }}"
+                                        data-subtasks='{{ t.subtasks|tojson }}'
+                                        class="btn btn-dark text-info border-info btn-edit-task"
+                                        data-bs-toggle="tooltip"
+                                        data-bs-placement="top"
+                                        title="Edit task">✏️</button>
+
+                                    {% if t.time %}
+                                        <a 
+                                            href="/export_ics?title={{ t.title|urlencode }}&date={{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.today_iso }}&time={{ t.time|urlencode if t.time else '' }}" 
+                                            class="btn btn-dark text-info border-info"
+                                            data-bs-toggle="tooltip"
+                                            data-bs-placement="top"
+                                            title="Export to Outlook/iCal">📅</a>
+                                    {% endif %}
+
+                                    {% if 'priority' not in t.tags %}
                                     <button 
                                         data-raw="{{ t.raw|forceescape }}" 
-                                        class="btn {% if 'focus' in t.tags %}btn-dark text-warning border-warning{% else %}btn-outline-warning{% endif %} btn-shift-task">➡️ Tomorrow</button>
+                                        class="btn btn-dark text-secondary border-secondary btn-move-bottom"
+                                        data-bs-toggle="tooltip"
+                                        data-bs-placement="top"
+                                        title="Move task to bottom">⬇️</button>
+                                    {% endif %}
+
                                     <button 
                                         data-raw="{{ t.raw|forceescape }}" 
-                                        class="btn {% if 'focus' in t.tags %}btn-dark text-success border-success{% else %}btn-outline-success{% endif %} btn-complete-task">✓ Done</button>
+                                        class="btn btn-dark text-warning border-warning btn-shift-task"
+                                        data-bs-toggle="tooltip"
+                                        data-bs-placement="top"
+                                        title="Shift to tomorrow">➡️ <span class="d-none d-lg-inline">Tomorrow</span></button>
+
+                                    <button 
+                                        data-raw="{{ t.raw|forceescape }}" 
+                                        class="btn btn-dark text-success border-success btn-complete-task"
+                                        data-bs-toggle="tooltip"
+                                        data-bs-placement="top"
+                                        title="Mark task completed">✓ <span class="d-none d-lg-inline">Done</span></button>
+
                                     <button 
                                         type="button" 
                                         data-raw="{{ t.raw|forceescape }}" 

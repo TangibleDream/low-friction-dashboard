@@ -12,7 +12,7 @@ from utils.board_etl import (
     shift_line_to_tomorrow, 
     toggle_line_focus 
 ) 
-from datetime import datetime
+from datetime import datetime, timedelta
 from utils.ics_utils import generate_task_ics
 
 app = Flask(__name__)
@@ -154,6 +154,9 @@ HTML_TEMPLATE = r"""
             <h1 class="h3 m-0 text-cyan">⚡ Executive Focus Engine</h1>
             <div class="d-flex align-items-center gap-3">
                 <span class="badge bg-outline-light border text-muted" id="status-badge">Live Sync Active</span>
+                <button class="btn btn-outline-info btn-sm me-2 fw-semibold" data-bs-toggle="modal" data-bs-target="#statsModal" id="btnOpenStats">
+                    📊 Stats
+                </button>
             </div>
         </header>
 
@@ -200,6 +203,171 @@ HTML_TEMPLATE = r"""
             }
         });
 
+        document.addEventListener('DOMContentLoaded', function() {
+            const rollingInput = document.getElementById('rollingWeeksInput');
+            const statsModal = document.getElementById('statsModal');
+            let rawVelocityData = { weeks: [], points: [] };
+
+            // 1. Persistent Rolling Window Config (localStorage, defaults to 2)
+            const SAVED_ROLLING_KEY = 'fib_velocity_rolling_weeks';
+            const savedRolling = localStorage.getItem(SAVED_ROLLING_KEY);
+            if (savedRolling) {
+                rollingInput.value = savedRolling;
+            } else {
+                rollingInput.value = 2;
+            }
+
+            rollingInput.addEventListener('change', function() {
+                let val = parseInt(this.value) || 2;
+                if (val < 1) val = 1;
+                this.value = val;
+                localStorage.setItem(SAVED_ROLLING_KEY, val);
+                renderVelocityChart();
+            });
+
+            // 2. Fetch Velocity Data on Modal Open
+            statsModal.addEventListener('show.bs.modal', function() {
+                fetch('/api/fib_velocity')
+                    .then(res => res.json())
+                    .then(data => {
+                        rawVelocityData = data;
+                        renderVelocityChart();
+                    })
+                    .catch(err => console.error('Error fetching velocity stats:', err));
+            });
+
+            // 3. Render SVG Line Chart
+            function renderVelocityChart() {
+                const svg = document.getElementById('velocitySvgChart');
+                svg.innerHTML = ''; // Clear SVG
+
+                const windowSize = parseInt(rollingInput.value) || 2;
+                const allWeeks = rawVelocityData.weeks || [];
+                const allPoints = rawVelocityData.points || [];
+
+                if (allWeeks.length === 0) {
+                    svg.innerHTML = `<text x="300" y="125" fill="#94a3b8" text-anchor="middle" font-size="14">No completed Fibonacci tasks logged yet.</text>`;
+                    document.getElementById('statWindowTotal').textContent = '0 pts';
+                    document.getElementById('statWindowAvg').textContent = '0 pts';
+                    return;
+                }
+
+                // Slice data to active rolling window
+                const displayWeeks = allWeeks.slice(-windowSize);
+                const displayPoints = allPoints.slice(-windowSize);
+
+                // Calculate Totals & Averages
+                const windowTotal = displayPoints.reduce((a, b) => a + b, 0);
+                const windowAvg = (windowTotal / (displayPoints.length || 1)).toFixed(1);
+
+                document.getElementById('statWindowTotal').textContent = `${windowTotal} pts`;
+                document.getElementById('statWindowAvg').textContent = `${windowAvg} pts`;
+
+                // SVG Dimensions
+                const width = 600;
+                const height = 250;
+                const padding = 40;
+
+                const maxVal = Math.max(...displayPoints, 10); // Minimum scale ceiling of 10
+                const minVal = 0;
+
+                const getX = (idx) => {
+                    if (displayWeeks.length === 1) return width / 2;
+                    return padding + (idx * (width - 2 * padding) / (displayWeeks.length - 1));
+                };
+
+                const getY = (val) => {
+                    return height - padding - ((val - minVal) * (height - 2 * padding) / (maxVal - minVal));
+                };
+
+                // Draw Grid Lines & Y-Axis Labels
+                const gridSteps = 4;
+                for (let i = 0; i <= gridSteps; i++) {
+                    const gridVal = Math.round((maxVal / gridSteps) * i);
+                    const yPos = getY(gridVal);
+
+                    // Grid Line
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', padding);
+                    line.setAttribute('y1', yPos);
+                    line.setAttribute('x2', width - padding);
+                    line.setAttribute('y2', yPos);
+                    line.setAttribute('stroke', '#334155');
+                    line.setAttribute('stroke-dasharray', '3 3');
+                    svg.appendChild(line);
+
+                    // Y Label
+                    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    text.setAttribute('x', padding - 8);
+                    text.setAttribute('y', yPos + 4);
+                    text.setAttribute('fill', '#94a3b8');
+                    text.setAttribute('font-size', '10');
+                    text.setAttribute('text-anchor', 'end');
+                    text.textContent = gridVal;
+                    svg.appendChild(text);
+                }
+
+                // Build Line Path
+                let pathD = '';
+                const pointsArray = [];
+
+                displayPoints.forEach((val, idx) => {
+                    const x = getX(idx);
+                    const y = getY(val);
+                    pointsArray.push({ x, y, val, label: displayWeeks[idx] });
+
+                    if (idx === 0) {
+                        pathD += `M ${x} ${y}`;
+                    } else {
+                        pathD += ` L ${x} ${y}`;
+                    }
+                });
+
+                // Draw Polyline
+                if (displayPoints.length > 1) {
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    path.setAttribute('d', pathD);
+                    path.setAttribute('fill', 'none');
+                    path.setAttribute('stroke', '#38bdf8');
+                    path.setAttribute('stroke-width', '3');
+                    svg.appendChild(path);
+                }
+
+                // Draw Data Points & X Labels
+                pointsArray.forEach(pt => {
+                    // Circle Node
+                    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                    circle.setAttribute('cx', pt.x);
+                    circle.setAttribute('cy', pt.y);
+                    circle.setAttribute('r', '5');
+                    circle.setAttribute('fill', '#0284c7');
+                    circle.setAttribute('stroke', '#38bdf8');
+                    circle.setAttribute('stroke-width', '2');
+                    svg.appendChild(circle);
+
+                    // Value Label above circle
+                    const valText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    valText.setAttribute('x', pt.x);
+                    valText.setAttribute('y', pt.y - 10);
+                    valText.setAttribute('fill', '#38bdf8');
+                    valText.setAttribute('font-size', '11');
+                    valText.setAttribute('font-weight', 'bold');
+                    valText.setAttribute('text-anchor', 'middle');
+                    valText.textContent = pt.val;
+                    svg.appendChild(valText);
+
+                    // X Axis Date Label
+                    const xText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    xText.setAttribute('x', pt.x);
+                    xText.setAttribute('y', height - 12);
+                    xText.setAttribute('fill', '#94a3b8');
+                    xText.setAttribute('font-size', '10');
+                    xText.setAttribute('text-anchor', 'middle');
+                    xText.textContent = pt.label;
+                    svg.appendChild(xText);
+                });
+            }
+        });
         document.addEventListener('visibilitychange', function() {
             if (document.visibilityState === 'visible') {
                 refreshDashboard();
@@ -730,6 +898,44 @@ HTML_TEMPLATE = r"""
                 <div class="modal-footer border-secondary">
                     <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-sm btn-info text-dark fw-bold" id="btn-update-task">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Fibonacci Velocity Modal -->
+    <div class="modal fade" id="statsModal" tabindex="-1" aria-labelledby="statsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content bg-slate-900 border-secondary text-light" style="background-color: #0f172a;">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title d-flex align-items-center gap-2" id="statsModalLabel">
+                        ⚡ Weekly Fibonacci Velocity
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Controls Header -->
+                    <div class="d-flex justify-content-between align-items-center mb-3 bg-slate-800 p-2 rounded border border-secondary" style="background-color: #1e293b;">
+                        <div class="d-flex align-items-center gap-2">
+                            <label for="rollingWeeksInput" class="form-label mb-0 small text-secondary fw-semibold">Rolling Window:</label>
+                            <input type="number" id="rollingWeeksInput" class="form-control form-control-sm bg-dark text-info border-secondary text-center fw-bold" style="width: 70px;" min="1" max="52" value="2">
+                            <span class="small text-secondary">weeks</span>
+                        </div>
+                        <div class="text-end">
+                            <span class="small text-muted d-block">Window Total: <strong id="statWindowTotal" class="text-info">0 pts</strong></span>
+                            <span class="small text-muted d-block">Avg / Week: <strong id="statWindowAvg" class="text-success">0 pts</strong></span>
+                        </div>
+                    </div>
+
+                    <!-- SVG Line Graph Container -->
+                    <div id="chartContainer" class="p-3 bg-dark rounded border border-secondary text-center" style="min-height: 280px; position: relative;">
+                        <svg id="velocitySvgChart" width="100%" height="250" viewBox="0 0 600 250" preserveAspectRatio="none">
+                            <!-- Chart rendered dynamically via JS -->
+                        </svg>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary justify-content-between">
+                    <span class="small text-muted">Ticks update automatically every Sunday.</span>
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -1325,6 +1531,86 @@ def add_task():
 
     TASK_FILE.write_text("\n".join(new_lines) + "\n")
     return jsonify({"status": "ok"})
+
+from datetime import datetime, timedelta
+import re
+
+@app.route("/api/fib_velocity", methods=["GET"])
+def get_fib_velocity():
+    if not TASK_FILE.exists():
+        return jsonify({"weeks": [], "points": []})
+
+    content = TASK_FILE.read_text()
+    lines = content.splitlines()
+
+    completed_fib_items = []
+    all_completed_dates = []
+    in_done_section = False
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("# Done"):
+            in_done_section = True
+            continue
+        elif stripped.startswith("#") and in_done_section:
+            in_done_section = False
+
+        if in_done_section or stripped.startswith("x ") or stripped.startswith("✓ "):
+            # Track any completed date to establish timeline start
+            date_match = re.search(r'\b(\d{1,2})/(\d{1,2})\b', stripped)
+            if date_match:
+                month, day = int(date_match.group(1)), int(date_match.group(2))
+                now = datetime.now()
+                year = now.year if month <= now.month else now.year - 1
+                item_date = datetime(year, month, day).date()
+                all_completed_dates.append(item_date)
+            else:
+                item_date = datetime.now().date()
+                all_completed_dates.append(item_date)
+
+            # Parse explicit Fibonacci scores
+            fib_match = re.search(r'#fib:(\d+)', stripped, re.IGNORECASE)
+            if fib_match:
+                points = int(fib_match.group(1))
+                completed_fib_items.append((item_date, points))
+
+    # If no completed items exist at all, return empty payload
+    if not all_completed_dates:
+        return jsonify({"weeks": [], "points": []})
+
+    today = datetime.now().date()
+    days_since_sunday = (today.weekday() + 1) % 7
+    last_closed_sunday = today - timedelta(days=days_since_sunday)
+    if days_since_sunday == 0:
+        last_closed_sunday = today
+
+    # Determine earliest completed task date
+    earliest_date = min(all_completed_dates)
+    days_to_sun = (6 - earliest_date.weekday()) % 7
+    first_sunday = earliest_date + timedelta(days=days_to_sun)
+
+    # Initialize all Sunday buckets from first_sunday to last_closed_sunday with 0
+    weekly_totals = {}
+    curr_sunday = first_sunday
+    while curr_sunday <= last_closed_sunday:
+        weekly_totals[curr_sunday] = 0
+        curr_sunday += timedelta(weeks=1)
+
+    # Accumulate points into corresponding Sunday buckets
+    for item_date, points in completed_fib_items:
+        days_to_sun = (6 - item_date.weekday()) % 7
+        target_sunday = item_date + timedelta(days=days_to_sun)
+        if target_sunday in weekly_totals:
+            weekly_totals[target_sunday] += points
+
+    sorted_weeks = sorted(weekly_totals.keys())
+    labels = [w.strftime("%m/%d") for w in sorted_weeks]
+    values = [weekly_totals[w] for w in sorted_weeks]
+
+    return jsonify({
+        "weeks": labels,
+        "points": values
+    })
 
 @app.route("/complete_task", methods=["POST"])
 def complete_task():

@@ -84,6 +84,26 @@ Execute the full unit test and BDD test suite:
 pytest
 ```
 
+## Task Ordering
+
+Tasks in `tasks.txt` are evaluated and displayed using a multi-tiered sorting hierarchy to ensure critical commitments and ordered workflows take precedence over standard fluid items.
+
+### Order Hierarchy
+
+1. **Priority Tasks:** Tasks prefixed with `!` or tagged with `#priority` always sit at the top of the schedule structure.
+2. **Ordered Tasks (`#ord:N`):** Tasks containing an `#ord:N` tag (where $N > 0$) are sorted sequentially in ascending numerical order (e.g., `#ord:10` appears before `#ord:20`).
+   * *Tip:* Step order values by 10s (e.g., `#ord:10`, `#ord:20`, `#ord:30`) or use decimals (`#ord:15`) to insert intermediate tasks without re-indexing existing items.
+3. **Unordered Tasks:** Tasks without an `#ord` tag (or explicitly set to `#ord:0`) render after all ordered items, maintaining their original file entry position.
+
+### Example Syntax
+
+```text
+! 11/05 System Deploy #priority
+* 11/05 Stage 1: Database Migration #ord:10
+* 11/05 Stage 2: Service Restart #ord:20
+* 11/05 Drink Water #daily
+```
+
 ## Recurring Task Engine
 
 The task engine automatically spawns a future-dated copy of any task completed in the UI when tagged with a recurrence rule. Completed instances are logged under `# Done` while their recurring counterpart is scheduled forward.

@@ -1472,6 +1472,21 @@ def render_links(text: str) -> str:
 
 app.jinja_env.filters['render_links'] = render_links
 
+def sort_tasks(tasks: list) -> list:
+    """
+    Sorts tasks by:
+    1. Priority status (is_priority = True first)
+    2. Ascending ord_score (#ord:10 < #ord:20 < float('inf'))
+    3. Preserved original file appearance order
+    """
+    return sorted(
+        tasks,
+        key=lambda t: (
+            not (t.get("symbol") == "!" or "priority" in t.get("tags", [])),  # Priority first
+            t.get("ord_score", float("inf"))                                 # Ascending order
+        )
+    )
+
 # Endpoints
 
 @app.route("/")

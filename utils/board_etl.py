@@ -282,6 +282,29 @@ def parse_date(content_str):
             return None
     return None
 
+def parse_line_ord(raw_line: str) -> float:
+    """Extracts numeric value from #ord:N tag. Returns float('inf') if missing or 0."""
+    match = re.search(r'#ord:(\d+(?:\.\d+)?)', raw_line, re.IGNORECASE)
+    if match:
+        val = float(match.group(1))
+        return val if val > 0 else float('inf')
+    return float('inf')
+
+def sort_task_list(tasks: list) -> list:
+    """
+    Sorts tasks by tier hierarchy:
+    1. Priority status (! symbol or #priority tag)
+    2. Ascending ord_score (#ord:10 < #ord:20 < float('inf'))
+    3. Preserves original file sequence
+    """
+    return sorted(
+        tasks,
+        key=lambda t: (
+            not (t.get("symbol") == "!" or "priority" in t.get("tags", [])),  # Priority tier first
+            t.get("ord_score", float("inf"))                                 # Ascending #ord value
+        )
+    )
+
 def parse_tasks(file_path: str):
     today_tasks = []
     future_tasks = []
@@ -388,6 +411,7 @@ def parse_tasks(file_path: str):
     'fib_score': fib_score,
     'preserve_subtasks': preserve_subtasks,
     'subtasks': [],
+    'ord_score': parse_line_ord(line),
     'raw': stripped
 }
 
@@ -406,7 +430,8 @@ def parse_tasks(file_path: str):
             return 1
         return 2
 
-    today_tasks.sort(key=get_task_sort_key)
+    today_tasks = sort_task_list(today_tasks)
+    future_tasks = sort_task_list(future_tasks)
 
     all_tags = set()
     path = Path(file_path)

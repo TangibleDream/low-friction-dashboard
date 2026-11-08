@@ -86,14 +86,14 @@ pytest
 
 ## Task Ordering
 
-Tasks in `tasks.txt` are evaluated and displayed using a multi-tiered sorting hierarchy to ensure critical commitments and ordered workflows take precedence over standard fluid items.
+Tasks in `tasks.txt` are evaluated and displayed using a multi-tiered sorting hierarchy to ensure critical commitments and active focus items take precedence.
 
 ### Order Hierarchy
 
-1. **Priority Tasks:** Tasks prefixed with `!` or tagged with `#priority` always sit at the top of the schedule structure.
-2. **Ordered Tasks (`#ord:N`):** Tasks containing an `#ord:N` tag (where $N > 0$) are sorted sequentially in ascending numerical order (e.g., `#ord:10` appears before `#ord:20`).
-   * *Tip:* Step order values by 10s (e.g., `#ord:10`, `#ord:20`, `#ord:30`) or use decimals (`#ord:15`) to insert intermediate tasks without re-indexing existing items.
-3. **Unordered Tasks:** Tasks without an `#ord` tag (or explicitly set to `#ord:0`) render after all ordered items, maintaining their original file entry position.
+1. **Priority Tasks:** Tasks prefixed with `!` or tagged with `#priority` always sit at the very top.
+2. **Focused Tasks:** Tasks tagged with `#focus` rise above all standard tasks (including ordered items with low `#ord` numbers).
+3. **Ordered Tasks (`#ord:N`):** Tasks containing an `#ord:N` tag (where $N > 0$) are sorted sequentially in ascending numerical order (e.g., `#ord:10` appears before `#ord:20`).
+4. **Unordered Tasks:** Tasks without an `#ord` tag maintain their relative file position below ordered items.
 
 ### Example Syntax
 

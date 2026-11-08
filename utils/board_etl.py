@@ -294,14 +294,16 @@ def sort_task_list(tasks: list) -> list:
     """
     Sorts tasks by tier hierarchy:
     1. Priority status (! symbol or #priority tag)
-    2. Ascending ord_score (#ord:10 < #ord:20 < float('inf'))
-    3. Preserves original file sequence
+    2. Focus status (#focus tag)
+    3. Ascending ord_score (#ord:10 < #ord:20 < float('inf'))
+    4. Preserves original file sequence
     """
     return sorted(
         tasks,
         key=lambda t: (
-            not (t.get("symbol") == "!" or "priority" in t.get("tags", [])),  # Priority tier first
-            t.get("ord_score", float("inf"))                                 # Ascending #ord value
+            not (t.get("symbol") == "!" or "priority" in t.get("tags", [])),  # Tier 0: Priority first
+            not ("focus" in t.get("tags", [])),                              # Tier 1: Focus second
+            t.get("ord_score", float("inf"))                                 # Tier 2: Ascending #ord value
         )
     )
 

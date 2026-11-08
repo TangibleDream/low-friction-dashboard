@@ -368,6 +368,35 @@ HTML_TEMPLATE = r"""
                 });
             }
         });
+
+        document.addEventListener('keydown', function(e) {
+            // Intercept typing '[' when text is selected inside any input or textarea
+            if (e.key === '[') {
+                const target = e.target;
+                
+                // Ensure event target is a text input or textarea
+                if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+                    if (target.selectionStart !== undefined && target.selectionStart !== target.selectionEnd) {
+                        e.preventDefault();
+
+                        const start = target.selectionStart;
+                        const end = target.selectionEnd;
+                        const selectedText = target.value.substring(start, end);
+                        const replacement = `[${selectedText}]()`;
+
+                        // Insert wrapped text template
+                        target.value = target.value.substring(0, start) + replacement + target.value.substring(end);
+
+                        // Set selection range inside the parentheses: [selectedText](|cursor|)
+                        const cursorPosition = start + selectedText.length + 3; // 1 for '[', text len, 2 for ']('
+                        target.setSelectionRange(cursorPosition, cursorPosition);
+                        
+                        // Dispatch input event so any framework/form binding updates
+                        target.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                }
+            }
+        });
         document.addEventListener('visibilitychange', function() {
             if (document.visibilityState === 'visible') {
                 refreshDashboard();

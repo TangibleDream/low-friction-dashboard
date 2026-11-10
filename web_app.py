@@ -50,6 +50,36 @@ HTML_TEMPLATE = r"""
             overflow-wrap: anywhere;
         }
 
+        .time-badge {
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+        .time-badge.time-passed {
+            background-color: #495057 !important;
+            color: #adb5bd !important;
+            opacity: 0.6;
+        }
+        .time-badge.time-distant {
+            background-color: #0d6efd !important;
+            color: #ffffff !important;
+        }
+        .time-badge.time-upcoming {
+            background-color: #fd7e14 !important; /* Orange warning */
+            color: #ffffff !important;
+        }
+        .time-badge.time-imminent {
+            background-color: #dc3545 !important; /* Bright Red Urgent */
+            color: #ffffff !important;
+            box-shadow: 0 0 8px rgba(220, 53, 69, 0.6);
+            animation: pulse-urgent 1.5s infinite;
+        }
+
+        @keyframes pulse-urgent {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.04); }
+            100% { transform: scale(1); }
+        }
+
         .subtask-text-container {
             min-width: 0;
             flex-grow: 1;
@@ -177,6 +207,83 @@ HTML_TEMPLATE = r"""
                 if (instance) instance.dispose();
             });
         }
+
+        // Web Audio API Synthesizer for 15-minute alert
+        function playImminentAlertSound() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                const ctx = new AudioContext();
+                
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, ctx.currentTime); // A5 note
+                osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.15);
+                
+                gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+                
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                
+                osc.start();
+                osc.stop(ctx.currentTime + 0.15);
+            } catch (e) {
+                console.log('Audio alert blocked or unsupported');
+            }
+        }
+
+        const alertedTimes = new Set();
+
+        function updateTimeBadgeProximity() {
+            const now = new Date();
+            // Local browser hours and minutes
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+            const timeElements = document.querySelectorAll('.time-badge, [data-time-str]');
+
+            timeElements.forEach(el => {
+                const timeStr = el.getAttribute('data-time-str') || el.textContent.trim();
+
+                // Regex captures HH:MM (e.g., 16:10) even with leading dates like "11/10 16:10"
+                const match = timeStr.match(/(?:^|\s)(\d{1,2}):(\d{2})\s*(am|pm)?\b/i);
+                if (!match) return;
+
+                let hours = parseInt(match[1], 10);
+                const minutes = parseInt(match[2], 10);
+                const meridian = match[3] ? match[3].toLowerCase() : null;
+
+                if (meridian === 'pm' && hours < 12) {
+                    hours += 12;
+                } else if (meridian === 'am' && hours === 12) {
+                    hours = 0;
+                }
+
+                const taskMinutes = hours * 60 + minutes;
+                const diffMinutes = taskMinutes - currentMinutes;
+
+                // Clear default Bootstrap text color classes so CSS styles override smoothly
+                el.classList.remove('text-info', 'time-passed', 'time-distant', 'time-upcoming', 'time-imminent');
+
+                if (diffMinutes < 0) {
+                    el.classList.add('time-passed');
+                } else if (diffMinutes <= 15) {
+                    el.classList.add('time-imminent');
+                } else if (diffMinutes <= 60) {
+                    el.classList.add('time-upcoming');
+                } else {
+                    el.classList.add('time-distant');
+                }
+            });
+        }
+
+        // Run immediately and evaluate every 30 seconds
+        document.addEventListener('DOMContentLoaded', () => {
+            updateTimeBadgeProximity();
+            setInterval(updateTimeBadgeProximity, 30000);
+        });
 
         function refreshDashboard() {
             disposeTooltips();
@@ -1019,7 +1126,7 @@ PARTIAL_TEMPLATE = """
                                     <span class="badge badge-fluid">FLUID</span>
                                 {% endif %}
                             </td>
-                            <td class="text-info fw-semibold align-top" style="white-space: nowrap;">{{ t.time or 'Flexible' }}</td>
+                            <td class="time-badge text-info fw-semibold align-top" style="white-space: nowrap;" data-time-str="{{ t.time }}">{{ t.time }}</td>
                             <td class="align-top">
                                 {% if t.contexts %}
                                     <span class="badge bg-secondary">@{{ t.contexts[0] }}</span>

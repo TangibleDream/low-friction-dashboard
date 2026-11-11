@@ -442,19 +442,29 @@ def parse_tasks(file_path: str):
     today_tasks = sort_task_list(today_tasks)
     future_tasks = sort_task_list(future_tasks)
 
+    # Inside parse_tasks() in utils/board_etl.py:
+
     all_tags = set()
+    # Inside parse_tasks() in utils/board_etl.py:
+
+    obsidian_link_history = set()
+    obsidian_pattern = re.compile(r'\[([^\]]+)\]\((obsidian://[^\s)]+)\)')
+
     path = Path(file_path)
     if path.exists():
-        found = re.findall(r'#([a-zA-Z0-9_\-]+)', path.read_text())
-        for t in found:
-            if t not in ('focus', 'priority'):
-                all_tags.add(t)
+        content_text = path.read_text()
+        
+        for match in obsidian_pattern.finditer(content_text):
+            title, url = match.groups()
+            full_link = f"[{title}]({url})"
+            obsidian_link_history.add(full_link)
 
     return {
         "today": today_tasks,
         "future": future_tasks,
         "completed": completed_tasks,
         "all_tags": sorted(list(all_tags)),
+        "obsidian_links": sorted(list(obsidian_link_history)),
         "today_fib_completed": int(today_fib_completed) if today_fib_completed.is_integer() else today_fib_completed,
         "today_fib_remaining": int(today_fib_remaining) if today_fib_remaining.is_integer() else today_fib_remaining
     }

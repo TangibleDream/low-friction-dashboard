@@ -28,7 +28,7 @@ def complete_task(file_path: str, raw_line: str, preserve_subtasks: bool = True)
     # Determine recurrence target date
     next_dt = None
 
-    # 1. Check #not-<weekday> (e.g. #Not-Sunday, #Not-Friday)
+    # 1. Check #not-<weekday>
     not_wday_match = re.search(
         r'#not-(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b', 
         target_clean, 
@@ -46,7 +46,7 @@ def complete_task(file_path: str, raw_line: str, preserve_subtasks: bool = True)
             candidate_dt += timedelta(days=1)
         next_dt = candidate_dt
 
-    # 2. Check #nth-weekday pattern (e.g. #1st-Monday, #3rd-Sunday)
+    # 2. Check #nth-weekday pattern
     elif re.search(
         r'#(1st|2nd|3rd|4th|5th)-(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b', 
         target_clean, 
@@ -101,7 +101,6 @@ def complete_task(file_path: str, raw_line: str, preserve_subtasks: bool = True)
             continue
         
         if removing and (line.startswith(" ") or line.startswith("\t")):
-            # ONLY append subtask lines to completed_block if preserve_subtasks is True
             if preserve_subtasks:
                 completed_block.append(line.strip())
             continue
@@ -110,7 +109,6 @@ def complete_task(file_path: str, raw_line: str, preserve_subtasks: bool = True)
 
         new_lines.append(line)
 
-    # Build recurring copy for calculated target date
     recurring_block = []
     if next_dt is not None and completed_block:
         next_date_str = f"{next_dt.month}/{next_dt.day}"
@@ -311,13 +309,23 @@ def parse_tasks(file_path: str):
     today_tasks = []
     future_tasks = []
     completed_tasks = []
-    
+    today_fib_completed = 0.0
+    today_fib_remaining = 0.0
+    today_date = datetime.now().date()
+    today_str_slash = f"{today_date.month}/{today_date.day}"
+
     if not Path(file_path).exists():
-        return {"today": today_tasks, "future": future_tasks, "completed": completed_tasks, "all_tags": []}
+        return {
+            "today": today_tasks, 
+            "future": future_tasks, 
+            "completed": completed_tasks, 
+            "all_tags": [],
+            "today_fib_completed": 0,
+            "today_fib_remaining": 0
+        }
 
     current_task = None
     in_done_section = False
-    today_date = datetime.now().date()
 
     with open(file_path, "r") as f:
         for line in f:
@@ -331,11 +339,22 @@ def parse_tasks(file_path: str):
                 in_done_section = True
                 continue
 
+            # Process completed tasks section
             if stripped.startswith("x ") or (in_done_section and not (stripped and stripped[0] in "!*?-0123456789")):
                 clean_done = re.sub(r'^(?:x\s*)+', '', stripped)
                 clean_done = re.sub(r'^\*\s*', '', clean_done)
                 if clean_done:
                     completed_tasks.append(clean_done)
+                    
+                    # Track completed fibonacci points for today
+                    done_fib_match = re.search(r'#fib:(\d+(?:\.\d+)?)', clean_done, re.IGNORECASE)
+                    if done_fib_match:
+                        date_match = re.search(r'(?<!\d:)\b(\d{1,2}/\d{1,2})\b(?!\:\d{2})', clean_done)
+                        if date_match:
+                            if date_match.group(1) == today_str_slash:
+                                today_fib_completed += float(done_fib_match.group(1))
+                        else:
+                            today_fib_completed += float(done_fib_match.group(1))
                 continue
 
             if stripped.startswith("# "):
@@ -347,7 +366,6 @@ def parse_tasks(file_path: str):
                     current_task['subtasks'].append(sub_title)
                 continue
 
-            # Handle explicit dates or hyphen bullets gracefully
             first_char = stripped[0]
             if first_char in "!*?":
                 symbol = first_char
@@ -375,17 +393,13 @@ def parse_tasks(file_path: str):
             raw_tags = re.findall(r'#([\w-]+(?::[\w-]+)?)', content)
             tags = [t.lower() for t in raw_tags]
 
-            # Check if task explicitly requests subtask retention in # Done
             preserve_subtasks = ("preserve_subtasks" in tags) or ("keep_subtasks" in tags)
 
-            # Extract fibonacci score if present (e.g., #fib:3 -> '3')
             fib_score = None
             for tag in tags:
                 if tag.startswith("fib:"):
                     fib_score = tag.split(":", 1)[1]
                     break
-
-            contexts = re.findall(r'@([\w-]+)', content)
 
             clean_title = content
             if time_str:
@@ -393,45 +407,38 @@ def parse_tasks(file_path: str):
             elif date_str:
                 clean_title = clean_title.replace(date_str, '')
 
-            # Strip contexts and tags case-insensitively
             for c in contexts:
                 clean_title = re.sub(rf'@{re.escape(c)}\b', '', clean_title, flags=re.IGNORECASE)
-            # Ensure fib: tags are stripped from the main title text
             for t in raw_tags:
                 clean_title = re.sub(rf'#{re.escape(t)}\b', '', clean_title, flags=re.IGNORECASE)
 
             clean_title = re.sub(r'\s+', ' ', clean_title).strip()
 
-            # Include 'fib_score' in current_task dictionary:
             current_task = {
-    'symbol': symbol,
-    'title': clean_title,
-    'time': time_str or date_str,
-    'parsed_date': parsed_dt,
-    'contexts': contexts,
-    'tags': tags,
-    'fib_score': fib_score,
-    'preserve_subtasks': preserve_subtasks,
-    'subtasks': [],
-    'ord_score': parse_line_ord(line),
-    'raw': stripped
-}
+                'symbol': symbol,
+                'title': clean_title,
+                'time': time_str or date_str,
+                'parsed_date': parsed_dt,
+                'contexts': contexts,
+                'tags': tags,
+                'fib_score': fib_score,
+                'preserve_subtasks': preserve_subtasks,
+                'subtasks': [],
+                'ord_score': parse_line_ord(line),
+                'raw': stripped
+            }
 
             if parsed_dt and parsed_dt.date() > today_date:
                 future_tasks.append(current_task)
             else:
                 today_tasks.append(current_task)
+                if fib_score:
+                    try:
+                        today_fib_remaining += float(fib_score)
+                    except ValueError:
+                        pass
 
-    future_tasks.sort(key=lambda t: t['parsed_date'] or datetime.max)
-
-    def get_task_sort_key(t):
-        lower_tags = [tag.lower() for tag in t.get('tags', [])]
-        if 'priority' in lower_tags:
-            return 0
-        if 'focus' in lower_tags:
-            return 1
-        return 2
-
+    # Sort tasks according to priority -> focus -> #ord hierarchy
     today_tasks = sort_task_list(today_tasks)
     future_tasks = sort_task_list(future_tasks)
 
@@ -447,7 +454,9 @@ def parse_tasks(file_path: str):
         "today": today_tasks,
         "future": future_tasks,
         "completed": completed_tasks,
-        "all_tags": sorted(list(all_tags))
+        "all_tags": sorted(list(all_tags)),
+        "today_fib_completed": int(today_fib_completed) if today_fib_completed.is_integer() else today_fib_completed,
+        "today_fib_remaining": int(today_fib_remaining) if today_fib_remaining.is_integer() else today_fib_remaining
     }
 
 def render_dashboard(data):

@@ -35,7 +35,6 @@ HTML_TEMPLATE = r"""
         .badge-arbitrary { background-color: #f59e0b; color: #000; }
         .btn-complete { padding: 0.1rem 0.4rem; font-size: 0.75rem; border-radius: 0.25rem; }
 
-        /* Desktop Standard Layout (>= 992px) */
         .table-fixed {
             table-layout: fixed;
             width: 100%;
@@ -55,29 +54,25 @@ HTML_TEMPLATE = r"""
             font-weight: 600;
         }
         .time-badge.time-passed {
-            background-color: #495057 !important;
-            color: #adb5bd !important;
+            color: #6c757d !important;
             opacity: 0.6;
         }
         .time-badge.time-distant {
-            background-color: #0d6efd !important;
-            color: #ffffff !important;
+            color: #0dcaf0 !important;
         }
         .time-badge.time-upcoming {
-            background-color: #fd7e14 !important; /* Orange warning */
-            color: #ffffff !important;
+            color: #fd7e14 !important;
         }
         .time-badge.time-imminent {
-            background-color: #dc3545 !important; /* Bright Red Urgent */
-            color: #ffffff !important;
-            box-shadow: 0 0 8px rgba(220, 53, 69, 0.6);
+            color: #dc3545 !important;
+            font-weight: 700 !important;
             animation: pulse-urgent 1.5s infinite;
         }
 
         @keyframes pulse-urgent {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.04); }
-            100% { transform: scale(1); }
+            0% { opacity: 1; }
+            50% { opacity: 0.4; }
+            100% { opacity: 1; }
         }
 
         .subtask-text-container {
@@ -105,7 +100,6 @@ HTML_TEMPLATE = r"""
             white-space: nowrap;
         }
 
-        /* Medium Displays & Foldables (Landscape / Unfolded: < 992px) */
         @media (max-width: 991px) {
             .table-fixed {
                 table-layout: auto !important;
@@ -135,7 +129,6 @@ HTML_TEMPLATE = r"""
             }
         }
 
-        /* Narrow Phone Displays (Single Screen / Outer Foldable: < 576px) */
         @media (max-width: 575px) {
             .table-responsive table, 
             .table-responsive thead, 
@@ -147,7 +140,7 @@ HTML_TEMPLATE = r"""
             }
 
             .table-responsive thead {
-                display: none !important; /* Hide column headers on mobile card layout */
+                display: none !important;
             }
 
             .table-responsive tr.task-row {
@@ -163,7 +156,6 @@ HTML_TEMPLATE = r"""
                 border: none !important;
             }
 
-            /* Top Row: Type, Date, Context side-by-side */
             .mobile-meta-row {
                 display: flex;
                 align-items: center;
@@ -208,7 +200,6 @@ HTML_TEMPLATE = r"""
             });
         }
 
-        // Web Audio API Synthesizer for 15-minute alert
         function playImminentAlertSound() {
             try {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -219,7 +210,7 @@ HTML_TEMPLATE = r"""
                 const gain = ctx.createGain();
                 
                 osc.type = 'sine';
-                osc.frequency.setValueAtTime(880, ctx.currentTime); // A5 note
+                osc.frequency.setValueAtTime(880, ctx.currentTime);
                 osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.15);
                 
                 gain.gain.setValueAtTime(0.15, ctx.currentTime);
@@ -239,15 +230,11 @@ HTML_TEMPLATE = r"""
 
         function updateTimeBadgeProximity() {
             const now = new Date();
-            // Local browser hours and minutes
             const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
             const timeElements = document.querySelectorAll('.time-badge, [data-time-str]');
 
             timeElements.forEach(el => {
                 const timeStr = el.getAttribute('data-time-str') || el.textContent.trim();
-
-                // Regex captures HH:MM (e.g., 16:10) even with leading dates like "11/10 16:10"
                 const match = timeStr.match(/(?:^|\s)(\d{1,2}):(\d{2})\s*(am|pm)?\b/i);
                 if (!match) return;
 
@@ -264,7 +251,6 @@ HTML_TEMPLATE = r"""
                 const taskMinutes = hours * 60 + minutes;
                 const diffMinutes = taskMinutes - currentMinutes;
 
-                // Clear default Bootstrap text color classes so CSS styles override smoothly
                 el.classList.remove('text-info', 'time-passed', 'time-distant', 'time-upcoming', 'time-imminent');
 
                 if (diffMinutes < 0) {
@@ -279,7 +265,6 @@ HTML_TEMPLATE = r"""
             });
         }
 
-        // Run immediately and evaluate every 30 seconds
         document.addEventListener('DOMContentLoaded', () => {
             updateTimeBadgeProximity();
             setInterval(updateTimeBadgeProximity, 30000);
@@ -297,6 +282,7 @@ HTML_TEMPLATE = r"""
                     if (container) {
                         container.innerHTML = html;
                         initTooltips();
+                        updateTimeBadgeProximity();
                     }
                 })
                 .catch(err => console.error("Auto-refresh error:", err));
@@ -315,7 +301,6 @@ HTML_TEMPLATE = r"""
             const statsModal = document.getElementById('statsModal');
             let rawVelocityData = { weeks: [], points: [] };
 
-            // 1. Persistent Rolling Window Config (localStorage, defaults to 2)
             const SAVED_ROLLING_KEY = 'fib_velocity_rolling_weeks';
             const savedRolling = localStorage.getItem(SAVED_ROLLING_KEY);
             if (savedRolling) {
@@ -332,7 +317,6 @@ HTML_TEMPLATE = r"""
                 renderVelocityChart();
             });
 
-            // 2. Fetch Velocity Data on Modal Open
             statsModal.addEventListener('show.bs.modal', function() {
                 fetch('/api/fib_velocity')
                     .then(res => res.json())
@@ -343,10 +327,9 @@ HTML_TEMPLATE = r"""
                     .catch(err => console.error('Error fetching velocity stats:', err));
             });
 
-            // 3. Render SVG Line Chart
             function renderVelocityChart() {
                 const svg = document.getElementById('velocitySvgChart');
-                svg.innerHTML = ''; // Clear SVG
+                svg.innerHTML = '';
 
                 const windowSize = parseInt(rollingInput.value) || 2;
                 const allWeeks = rawVelocityData.weeks || [];
@@ -359,23 +342,20 @@ HTML_TEMPLATE = r"""
                     return;
                 }
 
-                // Slice data to active rolling window
                 const displayWeeks = allWeeks.slice(-windowSize);
                 const displayPoints = allPoints.slice(-windowSize);
 
-                // Calculate Totals & Averages
                 const windowTotal = displayPoints.reduce((a, b) => a + b, 0);
                 const windowAvg = (windowTotal / (displayPoints.length || 1)).toFixed(1);
 
                 document.getElementById('statWindowTotal').textContent = `${windowTotal} pts`;
                 document.getElementById('statWindowAvg').textContent = `${windowAvg} pts`;
 
-                // SVG Dimensions
                 const width = 600;
                 const height = 250;
                 const padding = 40;
 
-                const maxVal = Math.max(...displayPoints, 10); // Minimum scale ceiling of 10
+                const maxVal = Math.max(...displayPoints, 10);
                 const minVal = 0;
 
                 const getX = (idx) => {
@@ -387,13 +367,11 @@ HTML_TEMPLATE = r"""
                     return height - padding - ((val - minVal) * (height - 2 * padding) / (maxVal - minVal));
                 };
 
-                // Draw Grid Lines & Y-Axis Labels
                 const gridSteps = 4;
                 for (let i = 0; i <= gridSteps; i++) {
                     const gridVal = Math.round((maxVal / gridSteps) * i);
                     const yPos = getY(gridVal);
 
-                    // Grid Line
                     const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                     line.setAttribute('x1', padding);
                     line.setAttribute('y1', yPos);
@@ -403,7 +381,6 @@ HTML_TEMPLATE = r"""
                     line.setAttribute('stroke-dasharray', '3 3');
                     svg.appendChild(line);
 
-                    // Y Label
                     const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                     text.setAttribute('x', padding - 8);
                     text.setAttribute('y', yPos + 4);
@@ -414,7 +391,6 @@ HTML_TEMPLATE = r"""
                     svg.appendChild(text);
                 }
 
-                // Build Line Path
                 let pathD = '';
                 const pointsArray = [];
 
@@ -430,7 +406,6 @@ HTML_TEMPLATE = r"""
                     }
                 });
 
-                // Draw Polyline
                 if (displayPoints.length > 1) {
                     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
                     path.setAttribute('d', pathD);
@@ -440,9 +415,7 @@ HTML_TEMPLATE = r"""
                     svg.appendChild(path);
                 }
 
-                // Draw Data Points & X Labels
                 pointsArray.forEach(pt => {
-                    // Circle Node
                     const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
                     circle.setAttribute('cx', pt.x);
                     circle.setAttribute('cy', pt.y);
@@ -452,7 +425,6 @@ HTML_TEMPLATE = r"""
                     circle.setAttribute('stroke-width', '2');
                     svg.appendChild(circle);
 
-                    // Value Label above circle
                     const valText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                     valText.setAttribute('x', pt.x);
                     valText.setAttribute('y', pt.y - 10);
@@ -463,7 +435,6 @@ HTML_TEMPLATE = r"""
                     valText.textContent = pt.val;
                     svg.appendChild(valText);
 
-                    // X Axis Date Label
                     const xText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                     xText.setAttribute('x', pt.x);
                     xText.setAttribute('y', height - 12);
@@ -477,11 +448,8 @@ HTML_TEMPLATE = r"""
         });
 
         document.addEventListener('keydown', function(e) {
-            // Intercept typing '[' when text is selected inside any input or textarea
             if (e.key === '[') {
                 const target = e.target;
-                
-                // Ensure event target is a text input or textarea
                 if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
                     if (target.selectionStart !== undefined && target.selectionStart !== target.selectionEnd) {
                         e.preventDefault();
@@ -491,19 +459,16 @@ HTML_TEMPLATE = r"""
                         const selectedText = target.value.substring(start, end);
                         const replacement = `[${selectedText}]()`;
 
-                        // Insert wrapped text template
                         target.value = target.value.substring(0, start) + replacement + target.value.substring(end);
 
-                        // Set selection range inside the parentheses: [selectedText](|cursor|)
-                        const cursorPosition = start + selectedText.length + 3; // 1 for '[', text len, 2 for ']('
+                        const cursorPosition = start + selectedText.length + 3;
                         target.setSelectionRange(cursorPosition, cursorPosition);
-                        
-                        // Dispatch input event so any framework/form binding updates
                         target.dispatchEvent(new Event('input', { bubbles: true }));
                     }
                 }
             }
         });
+
         document.addEventListener('visibilitychange', function() {
             if (document.visibilityState === 'visible') {
                 refreshDashboard();
@@ -552,6 +517,7 @@ HTML_TEMPLATE = r"""
                             if (container) {
                                 container.innerHTML = html;
                                 initTooltips();
+                                updateTimeBadgeProximity();
                             }
                         });
                 }
@@ -568,7 +534,6 @@ HTML_TEMPLATE = r"""
             };
         }
 
-        // Global Click Event Handler
         document.addEventListener('click', function(e) {
             if (e.target.closest('button')) {
                 const shiftBtn = e.target.closest('.btn-shift-task');
@@ -920,7 +885,7 @@ HTML_TEMPLATE = r"""
                                 <label class="form-label text-secondary small fw-bold">TAGS (Type or select historical)</label>
                                 <input type="text" class="form-control bg-dark text-light border-secondary" id="task-tags-input" list="historical-tags-list" placeholder="e.g. priority work">
                                 <datalist id="historical-tags-list">
-                                    {% for tag in data.all_tags %}
+                                    {% for tag in data.get('all_tags', []) %}
                                         <option value="{{ tag }}"></option>
                                     {% endfor %}
                                 </datalist>
@@ -1049,7 +1014,6 @@ HTML_TEMPLATE = r"""
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <!-- Controls Header -->
                     <div class="d-flex justify-content-between align-items-center mb-3 bg-slate-800 p-2 rounded border border-secondary" style="background-color: #1e293b;">
                         <div class="d-flex align-items-center gap-2">
                             <label for="rollingWeeksInput" class="form-label mb-0 small text-secondary fw-semibold">Rolling Window:</label>
@@ -1062,10 +1026,8 @@ HTML_TEMPLATE = r"""
                         </div>
                     </div>
 
-                    <!-- SVG Line Graph Container -->
                     <div id="chartContainer" class="p-3 bg-dark rounded border border-secondary text-center" style="min-height: 280px; position: relative;">
                         <svg id="velocitySvgChart" width="100%" height="250" viewBox="0 0 600 250" preserveAspectRatio="none">
-                            <!-- Chart rendered dynamically via JS -->
                         </svg>
                     </div>
                 </div>
@@ -1086,6 +1048,14 @@ PARTIAL_TEMPLATE = """
     <div class="card-header fw-bold text-uppercase text-secondary fs-6 d-flex justify-content-between align-items-center">
         <span>Today's Schedule Structure</span>
         <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-2" 
+                  title="Completed Fibonacci Velocity Today">
+                ⚡ Done: <strong>{{ data.get('today_fib_completed', 0) }}</strong>
+            </span>
+            <span class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill px-3 py-2" 
+                  title="Remaining Fibonacci Points Today">
+                🎯 Remaining: <strong>{{ data.get('today_fib_remaining', 0) }}</strong>
+            </span>
             <span class="badge bg-secondary">{{ data.today|length }} Tasks Total</span>
             {% if data.today|length > 10 %}
             <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#todayCollapse">
@@ -1176,7 +1146,7 @@ PARTIAL_TEMPLATE = """
                                         data-raw="{{ t.raw|forceescape }}"
                                         data-title="{{ t.title|forceescape }}"
                                         data-symbol="{{ t.symbol }}"
-                                        data-date="{{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.today_iso }}"
+                                        data-date="{{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.get('today_iso', '') }}"
                                         data-tags="{{ t.tags|join(' ') }}"
                                         data-subtasks='{{ t.subtasks|tojson }}'
                                         class="btn btn-dark text-info border-info btn-edit-task"
@@ -1186,7 +1156,7 @@ PARTIAL_TEMPLATE = """
 
                                     {% if t.time %}
                                         <a 
-                                            href="/export_ics?title={{ t.title|urlencode }}&date={{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.today_iso }}&time={{ t.time|urlencode if t.time else '' }}" 
+                                            href="/export_ics?title={{ t.title|urlencode }}&date={{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.get('today_iso', '') }}&time={{ t.time|urlencode if t.time else '' }}" 
                                             class="btn btn-dark text-info border-info"
                                             data-bs-toggle="tooltip"
                                             data-bs-placement="top"
@@ -1250,7 +1220,6 @@ PARTIAL_TEMPLATE = """
                             data-raw="{{ t.raw|forceescape }}"
                             style="cursor: pointer;">
                             
-                            <!-- Type / Meta Column -->
                             <td class="align-top" style="width: 12%">
                                 <div class="mobile-meta-row">
                                     {% if 'focus' in t.tags %}
@@ -1263,7 +1232,7 @@ PARTIAL_TEMPLATE = """
                                         <span class="badge badge-fluid">FLUID</span>
                                     {% endif %}
 
-                                    <span class="text-info fw-semibold ms-1 d-sm-none" style="white-space: nowrap;">{{ t.time or 'Flexible' }}</span>
+                                    <span class="time-badge text-info fw-semibold ms-1 d-sm-none" style="white-space: nowrap;" data-time-str="{{ t.time }}">{{ t.time or 'Flexible' }}</span>
 
                                     {% if t.contexts %}
                                         <span class="badge bg-secondary ms-1 d-sm-none">@{{ t.contexts[0] }}</span>
@@ -1274,12 +1243,10 @@ PARTIAL_TEMPLATE = """
                                 </div>
                             </td>
 
-                            <!-- Time / Date Column -->
-                            <td class="text-info fw-semibold align-top d-none d-sm-table-cell" style="width: 10%; white-space: nowrap;">
+                            <td class="time-badge text-info fw-semibold align-top d-none d-sm-table-cell" style="width: 10%; white-space: nowrap;" data-time-str="{{ t.time }}">
                                 {{ t.time or 'Flexible' }}
                             </td>
 
-                            <!-- Context Column -->
                             <td class="align-top d-none d-sm-table-cell" style="width: 10%">
                                 {% if t.contexts %}
                                     <span class="badge bg-secondary">@{{ t.contexts[0] }}</span>
@@ -1289,7 +1256,6 @@ PARTIAL_TEMPLATE = """
                                 {% endif %}
                             </td>
 
-                            <!-- Description Column -->
                             <td class="align-top" style="width: 30%">
                                 <div class="task-title-cell {% if t.symbol == '?' %}text-muted fst-italic{% else %}fw-semibold{% endif %}">
                                     {{ t.title | render_links | safe }}
@@ -1318,7 +1284,6 @@ PARTIAL_TEMPLATE = """
                                 {% endif %}
                             </td>
 
-                            <!-- Tags Column -->
                             <td class="align-top" style="width: 10%">
                                 {% for tag in t.tags %}
                                     {% if tag != 'focus' and tag != 'preserve_subtasks' and not tag.startswith('fib:') %}
@@ -1327,7 +1292,6 @@ PARTIAL_TEMPLATE = """
                                 {% endfor %}
                             </td>
 
-                            <!-- Action Column -->
                             <td class="align-top action-cell text-end" style="width: 28%">
                                 {% if 'focus' in t.tags %}
                                 <div class="btn-group btn-group-sm mobile-action-grid">
@@ -1335,7 +1299,7 @@ PARTIAL_TEMPLATE = """
                                         data-raw="{{ t.raw|forceescape }}"
                                         data-title="{{ t.title|forceescape }}"
                                         data-symbol="{{ t.symbol }}"
-                                        data-date="{{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.today_iso }}"
+                                        data-date="{{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.get('today_iso', '') }}"
                                         data-tags="{{ t.tags|join(' ') }}"
                                         data-subtasks='{{ t.subtasks|tojson }}'
                                         class="btn btn-dark text-info border-info btn-edit-task"
@@ -1345,7 +1309,7 @@ PARTIAL_TEMPLATE = """
 
                                     {% if t.time %}
                                         <a 
-                                            href="/export_ics?title={{ t.title|urlencode }}&date={{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.today_iso }}&time={{ t.time|urlencode if t.time else '' }}" 
+                                            href="/export_ics?title={{ t.title|urlencode }}&date={{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.get('today_iso', '') }}&time={{ t.time|urlencode if t.time else '' }}" 
                                             class="btn btn-dark text-info border-info"
                                             data-bs-toggle="tooltip"
                                             data-bs-placement="top"
@@ -1435,7 +1399,7 @@ PARTIAL_TEMPLATE = """
                             data-raw="{{ t.raw|forceescape }}"
                             data-title="{{ t.title|forceescape }}"
                             data-symbol="{{ t.symbol }}"
-                            data-date="{{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.today_iso }}"
+                            data-date="{{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.get('today_iso', '') }}"
                             data-tags="{{ t.tags|join(' ') }}"
                             data-subtasks='{{ t.subtasks|tojson }}'
                             class="btn btn-dark text-info border-info btn-edit-task"
@@ -1471,7 +1435,7 @@ PARTIAL_TEMPLATE = """
                                 data-raw="{{ t.raw|forceescape }}"
                                 data-title="{{ t.title|forceescape }}"
                                 data-symbol="{{ t.symbol }}"
-                                data-date="{{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.today_iso }}"
+                                data-date="{{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.get('today_iso', '') }}"
                                 data-tags="{{ t.tags|join(' ') }}"
                                 data-subtasks='{{ t.subtasks|tojson }}'
                                 class="btn btn-dark text-info border-info btn-edit-task"
@@ -1618,8 +1582,8 @@ def sort_tasks(tasks: list) -> list:
     return sorted(
         tasks,
         key=lambda t: (
-            not (t.get("symbol") == "!" or "priority" in t.get("tags", [])),  # Priority first
-            t.get("ord_score", float("inf"))                                 # Ascending order
+            not (t.get("symbol") == "!" or "priority" in t.get("tags", [])),
+            t.get("ord_score", float("inf"))
         )
     )
 
@@ -1628,6 +1592,7 @@ def sort_tasks(tasks: list) -> list:
 @app.route("/")
 def index():
     data = parse_tasks(str(TASK_FILE))
+    data["today_iso"] = datetime.now().strftime("%Y-%m-%d")
     return render_template_string(
         HTML_TEMPLATE.replace("{% include 'board_partial.html' %}", PARTIAL_TEMPLATE), 
         data=data
@@ -1683,9 +1648,6 @@ def add_task():
     TASK_FILE.write_text("\n".join(new_lines) + "\n")
     return jsonify({"status": "ok"})
 
-from datetime import datetime, timedelta
-import re
-
 @app.route("/api/fib_velocity", methods=["GET"])
 def get_fib_velocity():
     if not TASK_FILE.exists():
@@ -1707,7 +1669,6 @@ def get_fib_velocity():
             in_done_section = False
 
         if in_done_section or stripped.startswith("x ") or stripped.startswith("✓ "):
-            # Track any completed date to establish timeline start
             date_match = re.search(r'\b(\d{1,2})/(\d{1,2})\b', stripped)
             if date_match:
                 month, day = int(date_match.group(1)), int(date_match.group(2))
@@ -1719,13 +1680,11 @@ def get_fib_velocity():
                 item_date = datetime.now().date()
                 all_completed_dates.append(item_date)
 
-            # Parse explicit Fibonacci scores
             fib_match = re.search(r'#fib:(\d+)', stripped, re.IGNORECASE)
             if fib_match:
                 points = int(fib_match.group(1))
                 completed_fib_items.append((item_date, points))
 
-    # If no completed items exist at all, return empty payload
     if not all_completed_dates:
         return jsonify({"weeks": [], "points": []})
 
@@ -1735,19 +1694,16 @@ def get_fib_velocity():
     if days_since_sunday == 0:
         last_closed_sunday = today
 
-    # Determine earliest completed task date
     earliest_date = min(all_completed_dates)
     days_to_sun = (6 - earliest_date.weekday()) % 7
     first_sunday = earliest_date + timedelta(days=days_to_sun)
 
-    # Initialize all Sunday buckets from first_sunday to last_closed_sunday with 0
     weekly_totals = {}
     curr_sunday = first_sunday
     while curr_sunday <= last_closed_sunday:
         weekly_totals[curr_sunday] = 0
         curr_sunday += timedelta(weeks=1)
 
-    # Accumulate points into corresponding Sunday buckets
     for item_date, points in completed_fib_items:
         days_to_sun = (6 - item_date.weekday()) % 7
         target_sunday = item_date + timedelta(days=days_to_sun)
@@ -1798,7 +1754,6 @@ def complete_subtask():
     completed_subtask_entry = None
 
     for line in lines:
-        # 1. Indented lines MUST be checked FIRST as subtasks
         if in_target_parent and (line.startswith(" ") or line.startswith("\t")):
             stripped_sub = line.strip()
             clean_line_sub = re.sub(r'^\*\s*', '', stripped_sub).lower()
@@ -1810,14 +1765,13 @@ def complete_subtask():
                (clean_subtask in plain_file_sub) or \
                (plain_file_sub in raw_subtask):
                 completed_subtask_entry = f"✓ {stripped_sub.lstrip('* ')}"
-                continue  # Drop subtask line from parent task block
+                continue
 
             new_lines.append(line)
             continue
 
         stripped = line.strip()
 
-        # 2. Check if top-level line starts a parent task
         if stripped and stripped[0] in "!*?":
             clean_parent_line = re.sub(r'^[!*?]\s*', '', stripped)
             clean_parent_line = re.sub(r'^\d{1,2}/\d{1,2}\s*', '', clean_parent_line)
@@ -1833,7 +1787,6 @@ def complete_subtask():
             new_lines.append(line)
             continue
 
-        # Reset context on section headers
         if stripped and stripped.startswith("#"):
             in_target_parent = False
 

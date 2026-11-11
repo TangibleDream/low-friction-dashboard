@@ -534,6 +534,34 @@ HTML_TEMPLATE = r"""
             };
         }
 
+        // Function helper to create a subtask row input element
+        function createSubtaskInputRow(value = '') {
+            const row = document.createElement('div');
+            row.className = 'input-group input-group-sm mb-1 subtask-row';
+            
+            const span = document.createElement('span');
+            span.className = 'input-group-text bg-dark border-secondary text-secondary';
+            span.textContent = '↳';
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'form-control bg-dark text-light border-secondary subtask-input';
+            input.setAttribute('list', 'historical-obsidian-links');
+            input.placeholder = 'Subtask description or song link...';
+            input.value = value;
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn btn-outline-danger btn-remove-subtask';
+            btn.textContent = '✕';
+
+            row.appendChild(span);
+            row.appendChild(input);
+            row.appendChild(btn);
+
+            return row;
+        }
+
         document.addEventListener('click', function(e) {
             if (e.target.closest('button')) {
                 const shiftBtn = e.target.closest('.btn-shift-task');
@@ -668,23 +696,10 @@ HTML_TEMPLATE = r"""
                     
                     if (subtasks.length > 0) {
                         subtasks.forEach(sub => {
-                            const row = document.createElement('div');
-                            row.className = 'input-group input-group-sm mb-1 subtask-row';
-                            row.innerHTML = `
-                                <span class="input-group-text bg-dark border-secondary text-secondary">↳</span>
-                                <input type="text" class="form-control bg-dark text-light border-secondary subtask-input" value="${sub}">
-                                <button type="button" class="btn btn-outline-danger btn-remove-subtask">✕</button>
-                            `;
-                            subtasksContainer.appendChild(row);
+                            subtasksContainer.appendChild(createSubtaskInputRow(sub));
                         });
                     } else {
-                        subtasksContainer.innerHTML = `
-                            <div class="input-group input-group-sm mb-1 subtask-row">
-                                <span class="input-group-text bg-dark border-secondary text-secondary">↳</span>
-                                <input type="text" class="form-control bg-dark text-light border-secondary subtask-input" placeholder="Subtask description">
-                                <button type="button" class="btn btn-outline-danger btn-remove-subtask">✕</button>
-                            </div>
-                        `;
+                        subtasksContainer.appendChild(createSubtaskInputRow());
                     }
                 }
 
@@ -702,15 +717,9 @@ HTML_TEMPLATE = r"""
                 const containerId = e.target.id === 'btn-add-subtask-field' ? 'subtasks-container' : 'edit-subtasks-container';
                 const container = document.getElementById(containerId);
                 if (container) {
-                    const row = document.createElement('div');
-                    row.className = 'input-group input-group-sm mb-1 subtask-row';
-                    row.innerHTML = `
-                        <span class="input-group-text bg-dark border-secondary text-secondary">↳</span>
-                        <input type="text" class="form-control bg-dark text-light border-secondary subtask-input" placeholder="Subtask description">
-                        <button type="button" class="btn btn-outline-danger btn-remove-subtask">✕</button>
-                    `;
-                    container.appendChild(row);
-                    row.querySelector('input').focus();
+                    const newRow = createSubtaskInputRow();
+                    container.appendChild(newRow);
+                    newRow.querySelector('input').focus();
                 }
                 return;
             }
@@ -884,6 +893,11 @@ HTML_TEMPLATE = r"""
                             <div class="col-8">
                                 <label class="form-label text-secondary small fw-bold">TAGS (Type or select historical)</label>
                                 <input type="text" class="form-control bg-dark text-light border-secondary" id="task-tags-input" list="historical-tags-list" placeholder="e.g. priority work">
+                                <datalist id="historical-obsidian-links">
+                                    {% for link in data.get('obsidian_links', []) %}
+                                        <option value="{{ link | safe }}"></option>
+                                    {% endfor %}
+                                </datalist>
                                 <datalist id="historical-tags-list">
                                     {% for tag in data.get('all_tags', []) %}
                                         <option value="{{ tag }}"></option>
@@ -912,7 +926,10 @@ HTML_TEMPLATE = r"""
                             <div id="subtasks-container">
                                 <div class="input-group input-group-sm mb-1 subtask-row">
                                     <span class="input-group-text bg-dark border-secondary text-secondary">↳</span>
-                                    <input type="text" class="form-control bg-dark text-light border-secondary subtask-input" placeholder="Subtask description">
+                                    <input type="text" 
+                                        class="form-control bg-dark text-light border-secondary subtask-input" 
+                                        list="historical-obsidian-links" 
+                                        placeholder="Subtask description or song link...">
                                     <button type="button" class="btn btn-outline-danger btn-remove-subtask">✕</button>
                                 </div>
                             </div>

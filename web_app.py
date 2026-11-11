@@ -1473,19 +1473,20 @@ PARTIAL_TEMPLATE = """
 {% endif %}
 
 <div class="row g-4 mb-4">
+    <!-- Low-Hanging Fruit (<15m / Low Energy) -->
     <div class="col-md-6">
         <div class="card h-100 border-success shadow-sm">
             <div class="card-header bg-success text-white fw-bold">
-                ⚡ Low-Hanging Fruit (<15m / Low Energy)
+                ⚡ Low-Hanging Fruit (&lt;15m / Low Energy)
             </div>
             <ul class="list-group list-group-flush">
                 {% set quick_count = namespace(value=0) %}
                 {% for t in data.today %}
                     {% if 'quick' in t.tags or 'low_energy' in t.tags %}
                         {% set quick_count.value = quick_count.value + 1 %}
-                        <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center">
-                            <span>{{ t.title }}</span>
-                            <button data-raw="{{ t.raw|forceescape }}" class="btn btn-outline-success btn-complete btn-complete-task">✓</button>
+                        <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center gap-2">
+                            <span class="text-break">{{ t.title | render_links | safe }}</span>
+                            <button data-raw="{{ t.raw|forceescape }}" class="btn btn-outline-success btn-complete btn-complete-task flex-shrink-0">✓</button>
                         </li>
                     {% endif %}
                 {% endfor %}
@@ -1496,6 +1497,7 @@ PARTIAL_TEMPLATE = """
         </div>
     </div>
 
+    <!-- Gap Fillers (While Waiting on Main Task) -->
     <div class="col-md-6">
         <div class="card h-100 border-warning shadow-sm">
             <div class="card-header bg-warning text-dark fw-bold">
@@ -1513,9 +1515,9 @@ PARTIAL_TEMPLATE = """
                     
                     {% if has_wait %}
                         {% set wait_count.value = wait_count.value + 1 %}
-                        <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center">
-                            <span>{{ t.title }}</span>
-                            <div>
+                        <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center gap-2">
+                            <span class="text-break">{{ t.title | render_links | safe }}</span>
+                            <div class="flex-shrink-0">
                                 {% for tag in t.tags %}
                                     {% if tag == 'wait' or tag.startswith('wait:') %}
                                         <span class="badge bg-secondary me-2">#{{ tag }}</span>

@@ -440,7 +440,7 @@ def parse_tasks(file_path: str):
 
     # Sort tasks according to priority -> focus -> #ord hierarchy
     today_tasks = sort_task_list(today_tasks)
-    future_tasks = sort_task_list(future_tasks)
+    future_tasks = sort_future_tasks(future_tasks)
 
     # Inside parse_tasks() in utils/board_etl.py:
 
@@ -468,6 +468,37 @@ def parse_tasks(file_path: str):
         "today_fib_completed": int(today_fib_completed) if today_fib_completed.is_integer() else today_fib_completed,
         "today_fib_remaining": int(today_fib_remaining) if today_fib_remaining.is_integer() else today_fib_remaining
     }
+
+def parse_time_minutes(time_str: str) -> int:
+    """
+    Extracts start time in minutes from midnight (e.g., '11/12 16:00' -> 960).
+    Returns 24 * 60 (1440) for date-only tasks so timed tasks sort first on that date.
+    """
+    if not time_str:
+        return 24 * 60
+    match = re.search(r'(?:^|\s)(\d{1,2}):(\d{2})', time_str)
+    if match:
+        hours, minutes = int(match.group(1)), int(match.group(2))
+        return hours * 60 + minutes
+    return 24 * 60
+
+def sort_future_tasks(tasks: list) -> list:
+    """
+    Sorts future tasks chronologically:
+    1. Calendar date ascending (parsed_date)
+    2. Start time ascending (timed tasks before untimed tasks on the same date)
+    3. Priority status (! or #priority)
+    4. Ascending #ord score
+    """
+    return sorted(
+        tasks,
+        key=lambda t: (
+            t.get("parsed_date") or datetime.max,
+            parse_time_minutes(t.get("time")),
+            not (t.get("symbol") == "!" or "priority" in t.get("tags", [])),
+            t.get("ord_score", float("inf"))
+        )
+    )
 
 def render_dashboard(data):
     """Renders a Rich terminal view of today's schedule structure and task panels."""

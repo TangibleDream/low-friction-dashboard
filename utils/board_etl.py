@@ -445,19 +445,24 @@ def parse_tasks(file_path: str):
     # Inside parse_tasks() in utils/board_etl.py:
 
     all_tags = set()
-    # Inside parse_tasks() in utils/board_etl.py:
-
     obsidian_link_history = set()
     obsidian_pattern = re.compile(r'\[([^\]]+)\]\((obsidian://[^\s)]+)\)')
 
     path = Path(file_path)
     if path.exists():
         content_text = path.read_text()
-        
+
+        # Extract Obsidian links
         for match in obsidian_pattern.finditer(content_text):
             title, url = match.groups()
-            full_link = f"[{title}]({url})"
-            obsidian_link_history.add(full_link)
+            obsidian_link_history.add(f"[{title}]({url})")
+
+        # Extract all tags (supporting hyphens, underscores, and colons)
+        found_tags = re.findall(r'(?<!\S)#([a-zA-Z0-9_\-]+(?::[a-zA-Z0-9_\-]+)?)', content_text)
+        for t in found_tags:
+            t_lower = t.lower()
+            if t_lower not in ('focus', 'priority', 'preserve_subtasks', 'keep_subtasks') and not t_lower.startswith(('fib:', 'ord:')):
+                all_tags.add(t)
 
     return {
         "today": today_tasks,

@@ -774,6 +774,11 @@ HTML_TEMPLATE = r"""
                             </div>
                         `;
                     }
+                    const subtasksContainer = document.getElementById('subtasks-container');
+                    if (subtasksContainer) {
+                        subtasksContainer.innerHTML = '';
+                        subtasksContainer.appendChild(createSubtaskInputRow());
+                    }
                 });
             }
         });
@@ -802,6 +807,11 @@ HTML_TEMPLATE = r"""
                         </div>
                     `;
                 }
+            }
+            const container = document.getElementById('subtasks-container');
+            if (container) {
+                container.innerHTML = '';
+                container.appendChild(createSubtaskInputRow());
             }
         });
 
@@ -893,16 +903,6 @@ HTML_TEMPLATE = r"""
                             <div class="col-8">
                                 <label class="form-label text-secondary small fw-bold">TAGS (Type or select historical)</label>
                                 <input type="text" class="form-control bg-dark text-light border-secondary" id="task-tags-input" list="historical-tags-list" placeholder="e.g. priority work">
-                                <datalist id="historical-obsidian-links">
-                                    {% for link in data.get('obsidian_links', []) %}
-                                        <option value="{{ link | safe }}"></option>
-                                    {% endfor %}
-                                </datalist>
-                                <datalist id="historical-tags-list">
-                                    {% for tag in data.get('all_tags', []) %}
-                                        <option value="{{ tag }}"></option>
-                                    {% endfor %}
-                                </datalist>
                             </div>
                             <div class="col-4">
                                 <label class="form-label text-secondary small fw-bold">FIB SCORE</label>
@@ -1055,6 +1055,16 @@ HTML_TEMPLATE = r"""
             </div>
         </div>
     </div>
+    <datalist id="historical-obsidian-links">
+        {% for link in data.get('obsidian_links', []) %}
+            <option value="{{ link | safe }}"></option>
+        {% endfor %}
+    </datalist>
+    <datalist id="historical-tags-list">
+        {% for tag in data.get('all_tags', []) %}
+            <option value="{{ tag }}"></option>
+        {% endfor %}
+    </datalist>
 </body>
 </html>
 """

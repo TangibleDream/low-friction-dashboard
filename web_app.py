@@ -327,6 +327,21 @@ HTML_TEMPLATE = r"""
                     .catch(err => console.error('Error fetching velocity stats:', err));
             });
 
+            document.addEventListener('shown.bs.modal', function(e) {
+                if (e.target && e.target.id === 'addTaskModal') {
+                    const descInput = document.getElementById('task-desc');
+                    if (descInput) descInput.focus();
+                } else if (e.target && e.target.id === 'editTaskModal') {
+                    const editDescInput = document.getElementById('edit-task-desc');
+                    if (editDescInput) {
+                        editDescInput.focus();
+                        // Place cursor at the end of the existing description
+                        const len = editDescInput.value.length;
+                        editDescInput.setSelectionRange(len, len);
+                    }
+                }
+            });
+
             function renderVelocityChart() {
                 const svg = document.getElementById('velocitySvgChart');
                 svg.innerHTML = '';

@@ -382,6 +382,18 @@ def test_long_task_description_and_subtasks_have_truncation_classes(client):
     assert 'subtask-text-container' in html
     assert 'action-cell' in html
 
+def test_modals_default_focus_to_description(client):
+    """Verify Add and Edit modals focus their task description fields on shown.bs.modal."""
+    test_client, _ = client
+
+    response = test_client.get("/")
+    assert response.status_code == 200
+
+    html = response.get_data(as_text=True)
+    assert "shown.bs.modal" in html
+    assert "document.getElementById('task-desc')" in html
+    assert "document.getElementById('edit-task-desc')" in html
+    
 def test_partial_endpoint_serves_fresh_day_data(client):
     test_client, test_file = client
     now = datetime.now()

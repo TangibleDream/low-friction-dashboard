@@ -270,6 +270,20 @@ HTML_TEMPLATE = r"""
             setInterval(updateTimeBadgeProximity, 30000);
         });
 
+        document.addEventListener('shown.bs.modal', function(e) {
+            if (e.target && e.target.id === 'addTaskModal') {
+                const descInput = document.getElementById('task-desc');
+                if (descInput) descInput.focus();
+            } else if (e.target && e.target.id === 'editTaskModal') {
+                const editDescInput = document.getElementById('edit-task-desc');
+                if (editDescInput) {
+                    editDescInput.focus();
+                    const len = editDescInput.value.length;
+                    editDescInput.setSelectionRange(len, len);
+                }
+            }
+        });
+
         function refreshDashboard() {
             disposeTooltips();
             fetch('/partial')
@@ -298,16 +312,13 @@ HTML_TEMPLATE = r"""
 
         document.addEventListener('DOMContentLoaded', function() {
             const rollingInput = document.getElementById('rollingWeeksInput');
+            const dailyWeeksBackInput = document.getElementById('dailyWeeksBackInput');
             const statsModal = document.getElementById('statsModal');
-            let rawVelocityData = { weeks: [], points: [] };
+            let rawVelocityData = { weeks: [], points: [], daily_points: [] };
 
             const SAVED_ROLLING_KEY = 'fib_velocity_rolling_weeks';
             const savedRolling = localStorage.getItem(SAVED_ROLLING_KEY);
-            if (savedRolling) {
-                rollingInput.value = savedRolling;
-            } else {
-                rollingInput.value = 2;
-            }
+            rollingInput.value = savedRolling ? savedRolling : 2;
 
             rollingInput.addEventListener('change', function() {
                 let val = parseInt(this.value) || 2;
@@ -317,75 +328,35 @@ HTML_TEMPLATE = r"""
                 renderVelocityChart();
             });
 
+            dailyWeeksBackInput.addEventListener('change', function() {
+                let val = parseInt(this.value) || 1;
+                const maxWeeks = Math.max(rawVelocityData.weeks.length, 1);
+                if (val < 1) val = 1;
+                if (val > maxWeeks) val = maxWeeks;
+                this.value = val;
+                renderDailyChart();
+            });
+
             statsModal.addEventListener('show.bs.modal', function() {
+                // Default daily breakdown to 1 week back (last closed week) on open
+                dailyWeeksBackInput.value = 1;
                 fetch('/api/fib_velocity')
                     .then(res => res.json())
                     .then(data => {
                         rawVelocityData = data;
+                        const maxWeeks = Math.max((data.weeks || []).length, 1);
+                        dailyWeeksBackInput.max = maxWeeks;
                         renderVelocityChart();
+                        renderDailyChart();
                     })
                     .catch(err => console.error('Error fetching velocity stats:', err));
             });
 
-            document.addEventListener('shown.bs.modal', function(e) {
-                if (e.target && e.target.id === 'addTaskModal') {
-                    const descInput = document.getElementById('task-desc');
-                    if (descInput) descInput.focus();
-                } else if (e.target && e.target.id === 'editTaskModal') {
-                    const editDescInput = document.getElementById('edit-task-desc');
-                    if (editDescInput) {
-                        editDescInput.focus();
-                        // Place cursor at the end of the existing description
-                        const len = editDescInput.value.length;
-                        editDescInput.setSelectionRange(len, len);
-                    }
-                }
-            });
-
-            function renderVelocityChart() {
-                const svg = document.getElementById('velocitySvgChart');
-                svg.innerHTML = '';
-
-                const windowSize = parseInt(rollingInput.value) || 2;
-                const allWeeks = rawVelocityData.weeks || [];
-                const allPoints = rawVelocityData.points || [];
-
-                if (allWeeks.length === 0) {
-                    svg.innerHTML = `<text x="300" y="125" fill="#94a3b8" text-anchor="middle" font-size="14">No completed Fibonacci tasks logged yet.</text>`;
-                    document.getElementById('statWindowTotal').textContent = '0 pts';
-                    document.getElementById('statWindowAvg').textContent = '0 pts';
-                    return;
-                }
-
-                const displayWeeks = allWeeks.slice(-windowSize);
-                const displayPoints = allPoints.slice(-windowSize);
-
-                const windowTotal = displayPoints.reduce((a, b) => a + b, 0);
-                const windowAvg = (windowTotal / (displayPoints.length || 1)).toFixed(1);
-
-                document.getElementById('statWindowTotal').textContent = `${windowTotal} pts`;
-                document.getElementById('statWindowAvg').textContent = `${windowAvg} pts`;
-
-                const width = 600;
-                const height = 250;
-                const padding = 40;
-
-                const maxVal = Math.max(...displayPoints, 10);
-                const minVal = 0;
-
-                const getX = (idx) => {
-                    if (displayWeeks.length === 1) return width / 2;
-                    return padding + (idx * (width - 2 * padding) / (displayWeeks.length - 1));
-                };
-
-                const getY = (val) => {
-                    return height - padding - ((val - minVal) * (height - 2 * padding) / (maxVal - minVal));
-                };
-
+            function drawGridLines(svg, width, height, padding, maxVal) {
                 const gridSteps = 4;
                 for (let i = 0; i <= gridSteps; i++) {
                     const gridVal = Math.round((maxVal / gridSteps) * i);
-                    const yPos = getY(gridVal);
+                    const yPos = height - padding - ((gridVal / maxVal) * (height - 2 * padding));
 
                     const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                     line.setAttribute('x1', padding);
@@ -405,6 +376,47 @@ HTML_TEMPLATE = r"""
                     text.textContent = gridVal;
                     svg.appendChild(text);
                 }
+            }
+
+            function renderVelocityChart() {
+                const svg = document.getElementById('velocitySvgChart');
+                svg.innerHTML = '';
+
+                const windowSize = parseInt(rollingInput.value) || 2;
+                const allWeeks = rawVelocityData.weeks || [];
+                const allPoints = rawVelocityData.points || [];
+
+                if (allWeeks.length === 0) {
+                    svg.innerHTML = `<text x="300" y="100" fill="#94a3b8" text-anchor="middle" font-size="14">No completed Fibonacci tasks logged yet.</text>`;
+                    document.getElementById('statWindowTotal').textContent = '0 pts';
+                    document.getElementById('statWindowAvg').textContent = '0 pts';
+                    return;
+                }
+
+                const displayWeeks = allWeeks.slice(-windowSize);
+                const displayPoints = allPoints.slice(-windowSize);
+
+                const windowTotal = displayPoints.reduce((a, b) => a + b, 0);
+                const windowAvg = (windowTotal / (displayPoints.length || 1)).toFixed(1);
+
+                document.getElementById('statWindowTotal').textContent = `${windowTotal} pts`;
+                document.getElementById('statWindowAvg').textContent = `${windowAvg} pts`;
+
+                const width = 600;
+                const height = 200;
+                const padding = 36;
+                const maxVal = Math.max(...displayPoints, 10);
+
+                drawGridLines(svg, width, height, padding, maxVal);
+
+                const getX = (idx) => {
+                    if (displayWeeks.length === 1) return width / 2;
+                    return padding + (idx * (width - 2 * padding) / (displayWeeks.length - 1));
+                };
+
+                const getY = (val) => {
+                    return height - padding - (val * (height - 2 * padding) / maxVal);
+                };
 
                 let pathD = '';
                 const pointsArray = [];
@@ -413,12 +425,7 @@ HTML_TEMPLATE = r"""
                     const x = getX(idx);
                     const y = getY(val);
                     pointsArray.push({ x, y, val, label: displayWeeks[idx] });
-
-                    if (idx === 0) {
-                        pathD += `M ${x} ${y}`;
-                    } else {
-                        pathD += ` L ${x} ${y}`;
-                    }
+                    pathD += (idx === 0 ? `M ${x} ${y}` : ` L ${x} ${y}`);
                 });
 
                 if (displayPoints.length > 1) {
@@ -452,11 +459,106 @@ HTML_TEMPLATE = r"""
 
                     const xText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                     xText.setAttribute('x', pt.x);
-                    xText.setAttribute('y', height - 12);
+                    xText.setAttribute('y', height - 10);
                     xText.setAttribute('fill', '#94a3b8');
                     xText.setAttribute('font-size', '10');
                     xText.setAttribute('text-anchor', 'middle');
                     xText.textContent = pt.label;
+                    svg.appendChild(xText);
+                });
+            }
+
+            function renderDailyChart() {
+                const svg = document.getElementById('dailyVelocitySvgChart');
+                svg.innerHTML = '';
+
+                const allWeeks = rawVelocityData.weeks || [];
+                const allDaily = rawVelocityData.daily_points || [];
+                const rangeLabel = document.getElementById('dailyWeekRangeLabel');
+
+                if (allWeeks.length === 0 || allDaily.length === 0) {
+                    svg.innerHTML = `<text x="300" y="100" fill="#94a3b8" text-anchor="middle" font-size="14">No daily Fibonacci data available.</text>`;
+                    document.getElementById('statDailyWeekTotal').textContent = '0 pts';
+                    document.getElementById('statDailyWeekAvg').textContent = '0 pts';
+                    if (rangeLabel) rangeLabel.textContent = '';
+                    return;
+                }
+
+                // 1 = last closed week (index -1), 2 = two weeks back (index -2), etc.
+                const weeksBack = Math.min(Math.max(parseInt(dailyWeeksBackInput.value) || 1, 1), allWeeks.length);
+                const targetIdx = allWeeks.length - weeksBack;
+                const sundayLabel = allWeeks[targetIdx];
+                const weekDays = allDaily[targetIdx] || [0, 0, 0, 0, 0, 0, 0];
+
+                if (rangeLabel) {
+                    rangeLabel.textContent = weeksBack === 1
+                        ? `(Week ending ${sundayLabel} • Last Week)`
+                        : `(Week ending ${sundayLabel} • ${weeksBack} wks back)`;
+                }
+
+                const weekTotal = weekDays.reduce((a, b) => a + b, 0);
+                const dailyAvg = (weekTotal / 7).toFixed(1);
+                document.getElementById('statDailyWeekTotal').textContent = `${weekTotal} pts`;
+                document.getElementById('statDailyWeekAvg').textContent = `${dailyAvg} pts`;
+
+                const width = 600;
+                const height = 200;
+                const padding = 36;
+                const maxVal = Math.max(...weekDays, 8);
+
+                drawGridLines(svg, width, height, padding, maxVal);
+
+                // Compute exact M/D dates for Mon..Sun from sundayLabel ("MM/DD")
+                const [sunM, sunD] = sundayLabel.split('/').map(Number);
+                const now = new Date();
+                const sunYear = sunM > (now.getMonth() + 1) ? now.getFullYear() - 1 : now.getFullYear();
+                const sundayDate = new Date(sunYear, sunM - 1, sunD);
+                const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+                const plotWidth = width - 2 * padding;
+                const slotWidth = plotWidth / 7;
+                const barWidth = Math.min(slotWidth * 0.55, 42);
+
+                weekDays.forEach((val, idx) => {
+                    const dayDate = new Date(sundayDate);
+                    dayDate.setDate(sundayDate.getDate() - (6 - idx));
+                    const dateShort = `${dayDate.getMonth() + 1}/${dayDate.getDate()}`;
+
+                    const centerX = padding + (idx + 0.5) * slotWidth;
+                    const barX = centerX - (barWidth / 2);
+                    const barH = val > 0 ? Math.max((val / maxVal) * (height - 2 * padding), 3) : 2;
+                    const barY = (height - padding) - barH;
+
+                    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    rect.setAttribute('x', barX.toFixed(1));
+                    rect.setAttribute('y', barY.toFixed(1));
+                    rect.setAttribute('width', barWidth.toFixed(1));
+                    rect.setAttribute('height', barH.toFixed(1));
+                    rect.setAttribute('rx', '3');
+                    rect.setAttribute('fill', val > 0 ? '#10b981' : '#1e293b');
+                    rect.setAttribute('stroke', val > 0 ? '#34d399' : '#334155');
+                    rect.setAttribute('stroke-width', '1');
+                    svg.appendChild(rect);
+
+                    // Value label above bar
+                    const valText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    valText.setAttribute('x', centerX);
+                    valText.setAttribute('y', barY - 6);
+                    valText.setAttribute('fill', val > 0 ? '#34d399' : '#64748b');
+                    valText.setAttribute('font-size', '11');
+                    valText.setAttribute('font-weight', 'bold');
+                    valText.setAttribute('text-anchor', 'middle');
+                    valText.textContent = val;
+                    svg.appendChild(valText);
+
+                    // X-axis tick label ("Mon 11/02")
+                    const xText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    xText.setAttribute('x', centerX);
+                    xText.setAttribute('y', height - 10);
+                    xText.setAttribute('fill', '#94a3b8');
+                    xText.setAttribute('font-size', '10');
+                    xText.setAttribute('text-anchor', 'middle');
+                    xText.textContent = `${dayNames[idx]} ${dateShort}`;
                     svg.appendChild(xText);
                 });
             }
@@ -1046,20 +1148,43 @@ HTML_TEMPLATE = r"""
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="d-flex justify-content-between align-items-center mb-3 bg-slate-800 p-2 rounded border border-secondary" style="background-color: #1e293b;">
+                    <!-- Top Chart: Weekly Rolling Trend -->
+                    <div class="d-flex justify-content-between align-items-center mb-2 bg-slate-800 p-2 rounded border border-secondary" style="background-color: #1e293b;">
                         <div class="d-flex align-items-center gap-2">
+                            <span class="fw-bold text-info small text-uppercase">Weekly Trend</span>
+                            <span class="text-secondary">|</span>
                             <label for="rollingWeeksInput" class="form-label mb-0 small text-secondary fw-semibold">Rolling Window:</label>
-                            <input type="number" id="rollingWeeksInput" class="form-control form-control-sm bg-dark text-info border-secondary text-center fw-bold" style="width: 70px;" min="1" max="52" value="2">
+                            <input type="number" id="rollingWeeksInput" class="form-control form-control-sm bg-dark text-info border-secondary text-center fw-bold" style="width: 65px;" min="1" max="52" value="2">
                             <span class="small text-secondary">weeks</span>
                         </div>
-                        <div class="text-end">
-                            <span class="small text-muted d-block">Window Total: <strong id="statWindowTotal" class="text-info">0 pts</strong></span>
-                            <span class="small text-muted d-block">Avg / Week: <strong id="statWindowAvg" class="text-success">0 pts</strong></span>
+                        <div class="text-end d-flex gap-3">
+                            <span class="small text-muted">Total: <strong id="statWindowTotal" class="text-info">0 pts</strong></span>
+                            <span class="small text-muted">Avg/Wk: <strong id="statWindowAvg" class="text-success">0 pts</strong></span>
                         </div>
                     </div>
 
-                    <div id="chartContainer" class="p-3 bg-dark rounded border border-secondary text-center" style="min-height: 280px; position: relative;">
-                        <svg id="velocitySvgChart" width="100%" height="250" viewBox="0 0 600 250" preserveAspectRatio="none">
+                    <div id="chartContainer" class="p-2 bg-dark rounded border border-secondary text-center mb-4" style="min-height: 210px; position: relative;">
+                        <svg id="velocitySvgChart" width="100%" height="200" viewBox="0 0 600 200" preserveAspectRatio="none">
+                        </svg>
+                    </div>
+
+                    <!-- Bottom Chart: Daily Breakdown -->
+                    <div class="d-flex justify-content-between align-items-center mb-2 bg-slate-800 p-2 rounded border border-secondary" style="background-color: #1e293b;">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="fw-bold text-success small text-uppercase">Daily Breakdown</span>
+                            <span class="text-secondary">|</span>
+                            <label for="dailyWeeksBackInput" class="form-label mb-0 small text-secondary fw-semibold">Weeks Back:</label>
+                            <input type="number" id="dailyWeeksBackInput" class="form-control form-control-sm bg-dark text-success border-secondary text-center fw-bold" style="width: 65px;" min="1" max="52" value="1">
+                            <span class="small text-muted" id="dailyWeekRangeLabel">(Last Week)</span>
+                        </div>
+                        <div class="text-end d-flex gap-3">
+                            <span class="small text-muted">Week Total: <strong id="statDailyWeekTotal" class="text-success">0 pts</strong></span>
+                            <span class="small text-muted">Daily Avg: <strong id="statDailyWeekAvg" class="text-info">0 pts</strong></span>
+                        </div>
+                    </div>
+
+                    <div id="dailyChartContainer" class="p-2 bg-dark rounded border border-secondary text-center" style="min-height: 210px; position: relative;">
+                        <svg id="dailyVelocitySvgChart" width="100%" height="200" viewBox="0 0 600 200" preserveAspectRatio="none">
                         </svg>
                     </div>
                 </div>
@@ -1695,7 +1820,7 @@ def add_task():
 @app.route("/api/fib_velocity", methods=["GET"])
 def get_fib_velocity():
     if not TASK_FILE.exists():
-        return jsonify({"weeks": [], "points": []})
+        return jsonify({"weeks": [], "points": [], "daily_points": []})
 
     content = TASK_FILE.read_text()
     lines = content.splitlines()
@@ -1730,7 +1855,7 @@ def get_fib_velocity():
                 completed_fib_items.append((item_date, points))
 
     if not all_completed_dates:
-        return jsonify({"weeks": [], "points": []})
+        return jsonify({"weeks": [], "points": [], "daily_points": []})
 
     today = datetime.now().date()
     days_since_sunday = (today.weekday() + 1) % 7
@@ -1743,9 +1868,11 @@ def get_fib_velocity():
     first_sunday = earliest_date + timedelta(days=days_to_sun)
 
     weekly_totals = {}
+    weekly_daily_breakdown = {}
     curr_sunday = first_sunday
     while curr_sunday <= last_closed_sunday:
         weekly_totals[curr_sunday] = 0
+        weekly_daily_breakdown[curr_sunday] = [0] * 7  # [Mon, Tue, Wed, Thu, Fri, Sat, Sun]
         curr_sunday += timedelta(weeks=1)
 
     for item_date, points in completed_fib_items:
@@ -1753,14 +1880,17 @@ def get_fib_velocity():
         target_sunday = item_date + timedelta(days=days_to_sun)
         if target_sunday in weekly_totals:
             weekly_totals[target_sunday] += points
+            weekly_daily_breakdown[target_sunday][item_date.weekday()] += points
 
     sorted_weeks = sorted(weekly_totals.keys())
     labels = [w.strftime("%m/%d") for w in sorted_weeks]
     values = [weekly_totals[w] for w in sorted_weeks]
+    daily_values = [weekly_daily_breakdown[w] for w in sorted_weeks]
 
     return jsonify({
         "weeks": labels,
-        "points": values
+        "points": values,
+        "daily_points": daily_values
     })
 
 @app.route("/complete_task", methods=["POST"])

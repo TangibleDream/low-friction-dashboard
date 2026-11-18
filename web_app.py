@@ -1,6 +1,7 @@
 import re
 import time
 import html
+import calendar
 from pathlib import Path
 from flask import Flask, render_template_string, Response, request, jsonify
 from utils.board_etl import (
@@ -189,7 +190,7 @@ HTML_TEMPLATE = r"""
 
     <script>
         let evtSource;
-        
+
         function disposeTooltips() {
             const tooltips = document.querySelectorAll('.tooltip');
             tooltips.forEach(t => t.remove());
@@ -313,8 +314,9 @@ HTML_TEMPLATE = r"""
         document.addEventListener('DOMContentLoaded', function() {
             const rollingInput = document.getElementById('rollingWeeksInput');
             const dailyWeeksBackInput = document.getElementById('dailyWeeksBackInput');
+            const stepMonthsBackInput = document.getElementById('stepMonthsBackInput');
             const statsModal = document.getElementById('statsModal');
-            let rawVelocityData = { weeks: [], points: [], daily_points: [] };
+            let rawVelocityData = { weeks: [], points: [], daily_points: [], monthly_steps: [] };
 
             const SAVED_ROLLING_KEY = 'fib_velocity_rolling_weeks';
             const savedRolling = localStorage.getItem(SAVED_ROLLING_KEY);
@@ -338,16 +340,20 @@ HTML_TEMPLATE = r"""
             });
 
             statsModal.addEventListener('show.bs.modal', function() {
-                // Default daily breakdown to 1 week back (last closed week) on open
                 dailyWeeksBackInput.value = 1;
+                if (stepMonthsBackInput) stepMonthsBackInput.value = 1;
                 fetch('/api/fib_velocity')
                     .then(res => res.json())
                     .then(data => {
                         rawVelocityData = data;
                         const maxWeeks = Math.max((data.weeks || []).length, 1);
                         dailyWeeksBackInput.max = maxWeeks;
+                        if (stepMonthsBackInput) {
+                            stepMonthsBackInput.max = Math.max((data.monthly_steps || []).length, 1);
+                        }
                         renderVelocityChart();
                         renderDailyChart();
+                        renderMonthlyStepRibbon();
                     })
                     .catch(err => console.error('Error fetching velocity stats:', err));
             });
@@ -376,6 +382,34 @@ HTML_TEMPLATE = r"""
                     text.textContent = gridVal;
                     svg.appendChild(text);
                 }
+            }
+
+            function renderMonthlyStepRibbon() {
+                const monthlySteps = rawVelocityData.monthly_steps || [];
+                const stepMonthLabel = document.getElementById('stepMonthLabel');
+                const stepFractionText = document.getElementById('stepFractionText');
+                const stepMonthlyPct = document.getElementById('stepMonthlyPct');
+
+                if (monthlySteps.length === 0) {
+                    if (stepMonthLabel) stepMonthLabel.textContent = 'No closed months';
+                    if (stepFractionText) stepFractionText.textContent = '0 / 30 days';
+                    if (stepMonthlyPct) stepMonthlyPct.textContent = '0%';
+                    return;
+                }
+
+                // 1 = N-1 (most recent closed month), 2 = N-2, etc.
+                const monthsBack = Math.min(Math.max(parseInt(stepMonthsBackInput.value) || 1, 1), monthlySteps.length);
+                stepMonthsBackInput.value = monthsBack;
+                const targetIdx = monthlySteps.length - monthsBack;
+                const entry = monthlySteps[targetIdx];
+
+                if (stepMonthLabel) stepMonthLabel.textContent = entry.label;
+                if (stepFractionText) stepFractionText.textContent = `${entry.yes_days} / ${entry.total_days} days`;
+                if (stepMonthlyPct) stepMonthlyPct.textContent = `${entry.percentage}%`;
+            }
+
+            if (stepMonthsBackInput) {
+                stepMonthsBackInput.addEventListener('change', renderMonthlyStepRibbon);
             }
 
             function renderVelocityChart() {
@@ -1143,18 +1177,33 @@ HTML_TEMPLATE = r"""
             <div class="modal-content bg-slate-900 border-secondary text-light" style="background-color: #0f172a;">
                 <div class="modal-header border-secondary">
                     <h5 class="modal-title d-flex align-items-center gap-2" id="statsModalLabel">
-                        ⚡ Weekly Fibonacci Velocity
+                        ⚡ Task Statistics
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
+                    <!-- Monthly Step Consistency Ribbon (Closed Months Only) -->
+                    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 px-3 py-2 rounded border border-info-subtle gap-2" style="background-color: #162032;">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="fw-bold text-info small text-uppercase">👟 Monthly Step Consistency</span>
+                            <span class="text-secondary">|</span>
+                            <label for="stepMonthsBackInput" class="form-label mb-0 small text-secondary fw-semibold">Months Back:</label>
+                            <input type="number" id="stepMonthsBackInput" class="form-control form-control-sm bg-dark text-info border-secondary text-center fw-bold" style="width: 72px;" min="1" max="24" value="1">
+                            <span class="badge bg-dark border border-secondary text-light" id="stepMonthLabel">--</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-3">
+                            <span class="small text-muted" id="stepFractionText">0 / 30 days</span>
+                            <span class="badge bg-info text-dark fw-bold fs-6" id="stepMonthlyPct">0%</span>
+                        </div>
+                    </div>
+
                     <!-- Top Chart: Weekly Rolling Trend -->
                     <div class="d-flex justify-content-between align-items-center mb-2 bg-slate-800 p-2 rounded border border-secondary" style="background-color: #1e293b;">
                         <div class="d-flex align-items-center gap-2">
                             <span class="fw-bold text-info small text-uppercase">Weekly Trend</span>
                             <span class="text-secondary">|</span>
                             <label for="rollingWeeksInput" class="form-label mb-0 small text-secondary fw-semibold">Rolling Window:</label>
-                            <input type="number" id="rollingWeeksInput" class="form-control form-control-sm bg-dark text-info border-secondary text-center fw-bold" style="width: 65px;" min="1" max="52" value="2">
+                            <input type="number" id="rollingWeeksInput" class="form-control form-control-sm bg-dark text-info border-secondary text-center fw-bold" style="width: 72px;" min="1" max="52" value="2">
                             <span class="small text-secondary">weeks</span>
                         </div>
                         <div class="text-end d-flex gap-3">
@@ -1820,13 +1869,14 @@ def add_task():
 @app.route("/api/fib_velocity", methods=["GET"])
 def get_fib_velocity():
     if not TASK_FILE.exists():
-        return jsonify({"weeks": [], "points": [], "daily_points": []})
+        return jsonify({"weeks": [], "points": [], "daily_points": [], "monthly_steps": []})
 
     content = TASK_FILE.read_text()
     lines = content.splitlines()
 
     completed_fib_items = []
     all_completed_dates = []
+    step_dates_by_month = {}
     in_done_section = False
 
     for line in lines:
@@ -1838,24 +1888,48 @@ def get_fib_velocity():
             in_done_section = False
 
         if in_done_section or stripped.startswith("x ") or stripped.startswith("✓ "):
-            date_match = re.search(r'\b(\d{1,2})/(\d{1,2})\b', stripped)
+            date_match = re.search(r'(?<!\d:)\b(\d{1,2})/(\d{1,2})\b(?!\:\d{2})', stripped)
             if date_match:
                 month, day = int(date_match.group(1)), int(date_match.group(2))
                 now = datetime.now()
                 year = now.year if month <= now.month else now.year - 1
-                item_date = datetime(year, month, day).date()
+                try:
+                    item_date = datetime(year, month, day).date()
+                except ValueError:
+                    item_date = now.date()
                 all_completed_dates.append(item_date)
             else:
                 item_date = datetime.now().date()
                 all_completed_dates.append(item_date)
 
-            fib_match = re.search(r'#fib:(\d+)', stripped, re.IGNORECASE)
+            fib_match = re.search(r'#fib:(\d+(?:\.\d+)?)', stripped, re.IGNORECASE)
             if fib_match:
-                points = int(fib_match.group(1))
+                points = float(fib_match.group(1))
                 completed_fib_items.append((item_date, points))
 
+            if re.search(r'(?:#steps\b|\bsteps\b)', stripped, re.IGNORECASE):
+                ym_key = (item_date.year, item_date.month)
+                step_dates_by_month.setdefault(ym_key, set()).add(item_date)
+
+    now = datetime.now()
+    current_ym = (now.year, now.month)
+    monthly_steps = []
+    for (yr, mo) in sorted(step_dates_by_month.keys()):
+        if (yr, mo) >= current_ym:
+            continue
+        days_in_month = calendar.monthrange(yr, mo)[1]
+        yes_days = len(step_dates_by_month[(yr, mo)])
+        pct = round((yes_days / days_in_month) * 100, 1)
+        monthly_steps.append({
+            "month": f"{yr}-{mo:02d}",
+            "label": datetime(yr, mo, 1).strftime("%b %Y"),
+            "yes_days": yes_days,
+            "total_days": days_in_month,
+            "percentage": pct
+        })
+
     if not all_completed_dates:
-        return jsonify({"weeks": [], "points": [], "daily_points": []})
+        return jsonify({"weeks": [], "points": [], "daily_points": [], "monthly_steps": monthly_steps})
 
     today = datetime.now().date()
     days_since_sunday = (today.weekday() + 1) % 7
@@ -1872,7 +1946,7 @@ def get_fib_velocity():
     curr_sunday = first_sunday
     while curr_sunday <= last_closed_sunday:
         weekly_totals[curr_sunday] = 0
-        weekly_daily_breakdown[curr_sunday] = [0] * 7  # [Mon, Tue, Wed, Thu, Fri, Sat, Sun]
+        weekly_daily_breakdown[curr_sunday] = [0] * 7
         curr_sunday += timedelta(weeks=1)
 
     for item_date, points in completed_fib_items:
@@ -1884,13 +1958,20 @@ def get_fib_velocity():
 
     sorted_weeks = sorted(weekly_totals.keys())
     labels = [w.strftime("%m/%d") for w in sorted_weeks]
-    values = [weekly_totals[w] for w in sorted_weeks]
-    daily_values = [weekly_daily_breakdown[w] for w in sorted_weeks]
+    values = [
+        int(weekly_totals[w]) if float(weekly_totals[w]).is_integer() else round(weekly_totals[w], 1)
+        for w in sorted_weeks
+    ]
+    daily_values = [
+        [int(d) if float(d).is_integer() else round(d, 1) for d in weekly_daily_breakdown[w]]
+        for w in sorted_weeks
+    ]
 
     return jsonify({
         "weeks": labels,
         "points": values,
-        "daily_points": daily_values
+        "daily_points": daily_values,
+        "monthly_steps": monthly_steps
     })
 
 @app.route("/complete_task", methods=["POST"])

@@ -1,5 +1,6 @@
 import pytest
 from datetime import datetime, timedelta
+import calendar
 
 def test_fib_velocity_api_empty_file(client):
     """Test API response when tasks.txt has no completed tasks."""
@@ -82,6 +83,42 @@ def test_fib_velocity_returns_daily_bars_per_sunday_week(client):
     assert last_week_days[6] == 2  # Sunday
     assert sum(last_week_days) == payload["points"][-1]
 
+def test_monthly_step_percentage_excludes_current_month_and_returns_closed_months(client):
+    """Verify /api/fib_velocity excludes the active month and calculates N-1 closed month stats."""
+    test_client, test_file = client
+
+    now = datetime.now()
+    # Calculate N-1 (previous closed month)
+    prev_month = 12 if now.month == 1 else now.month - 1
+    prev_year = now.year - 1 if now.month == 1 else now.year
+    days_in_prev_month = calendar.monthrange(prev_year, prev_month)[1]
+
+    test_file.write_text(
+        "# Done\n"
+        f"x ! {prev_month}/1 10:00 Walk 11K steps #daily\n"
+        f"x ! {prev_month}/1 18:00 Evening steps #steps\n"
+        f"x ! {prev_month}/2 10:00 Walk 11K steps #daily\n"
+        f"x ! {prev_month}/5 10:00 Walk 11K steps #daily\n"
+        f"x ! {now.month}/1 10:00 Walk 11K steps #daily\n"
+    )
+
+    response = test_client.get("/api/fib_velocity")
+    assert response.status_code == 200
+
+    payload = response.get_json()
+    monthly_steps = payload["monthly_steps"]
+
+    # Current month must never appear
+    current_ym = f"{now.year}-{now.month:02d}"
+    assert all(m["month"] != current_ym for m in monthly_steps)
+
+    # N-1 month should be present with deduplicated day count
+    assert len(monthly_steps) == 1
+    entry = monthly_steps[0]
+    assert entry["yes_days"] == 3
+    assert entry["total_days"] == days_in_prev_month
+    assert entry["percentage"] == round((3 / days_in_prev_month) * 100, 1)
+
 def test_stats_button_and_modal_markup_present(client):
     """Test that the main page renders the Stats button, modal markup, and SVG chart elements."""
     test_client, _ = client
@@ -96,8 +133,9 @@ def test_stats_button_and_modal_markup_present(client):
     assert '📊 Stats' in html
 
     # Verify Modal container
+    # Verify Modal container
     assert 'id="statsModal"' in html
-    assert 'Weekly Fibonacci Velocity' in html
+    assert 'Task Statistics' in html
 
     # Verify Rolling Window Input with default value of 2
     assert 'id="rollingWeeksInput"' in html

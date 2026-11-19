@@ -830,6 +830,7 @@ HTML_TEMPLATE = r"""
 
                 const oldRawEl = document.getElementById('edit-old-raw');
                 const dateEl = document.getElementById('edit-task-date');
+                const timeEl = document.getElementById('edit-task-time');
                 const typeEl = document.getElementById('edit-task-type');
                 const descEl = document.getElementById('edit-task-desc');
                 const tagsEl = document.getElementById('edit-task-tags-input');
@@ -854,6 +855,15 @@ HTML_TEMPLATE = r"""
 
                 oldRawEl.value = editBtn.getAttribute('data-raw') || '';
                 dateEl.value = editBtn.getAttribute('data-date') || '';
+                if (timeEl) {
+                    const rawTimeAttr = (editBtn.getAttribute('data-time') || '').trim();
+                    // Strip leading M/D date prefix (e.g. "11/17 18:00" -> "18:00") or "Flexible"
+                    const cleanedTime = rawTimeAttr
+                        .replace(/^\d{1,2}\/\d{1,2}\s*/, '')
+                        .replace(/^Flexible$/i, '')
+                        .trim();
+                    timeEl.value = cleanedTime;
+                }
                 typeEl.value = editBtn.getAttribute('data-symbol') || '*';
                 descEl.value = editBtn.getAttribute('data-title') || '';
                 
@@ -930,6 +940,7 @@ HTML_TEMPLATE = r"""
         document.addEventListener('click', function(e) {
             if (e.target && e.target.id === 'btn-save-task') {
                 const dateVal = document.getElementById('task-date').value;
+                const timeVal = (document.getElementById('task-time')?.value || '').trim();
                 const symbol = document.getElementById('task-type').value;
                 const description = document.getElementById('task-desc').value.trim();
                 const rawTags = document.getElementById('task-tags-input').value.trim();
@@ -952,7 +963,7 @@ HTML_TEMPLATE = r"""
                 fetch('/add_task', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ date: dateVal, symbol, description, tags, subtasks })
+                    body: JSON.stringify({ date: dateVal, time: timeVal, symbol, description, tags, subtasks })
                 }).then(res => {
                     if (res.ok) {
                         const modalEl = document.getElementById('addTaskModal');
@@ -1013,6 +1024,7 @@ HTML_TEMPLATE = r"""
             if (e.target && e.target.id === 'btn-update-task') {
                 const oldRaw = document.getElementById('edit-old-raw').value;
                 const dateVal = document.getElementById('edit-task-date').value;
+                const timeVal = (document.getElementById('edit-task-time')?.value || '').trim();
                 const symbol = document.getElementById('edit-task-type').value;
                 const description = document.getElementById('edit-task-desc').value.trim();
                 const rawTags = document.getElementById('edit-task-tags-input').value.trim();
@@ -1039,6 +1051,7 @@ HTML_TEMPLATE = r"""
                     body: JSON.stringify({ 
                         old_raw: oldRaw, 
                         date: dateVal, 
+                        time: timeVal,
                         symbol: symbol, 
                         description: description, 
                         tags: tags, 
@@ -1074,9 +1087,15 @@ HTML_TEMPLATE = r"""
                             </div>
                         </div>
 
-                        <div class="mb-3">
-                            <label class="form-label text-secondary small fw-bold">SCHEDULED DATE</label>
-                            <input type="date" class="form-control bg-dark text-light border-secondary" id="task-date">
+                        <div class="row g-2 mb-3">
+                            <div class="col-7">
+                                <label class="form-label text-secondary small fw-bold">SCHEDULED DATE</label>
+                                <input type="date" class="form-control bg-dark text-light border-secondary" id="task-date">
+                            </div>
+                            <div class="col-5">
+                                <label class="form-label text-secondary small fw-bold">TIME (Optional)</label>
+                                <input type="text" class="form-control bg-dark text-light border-secondary" id="task-time" placeholder="e.g. 18:00">
+                            </div>
                         </div>
 
                         <div class="mb-3">
@@ -1161,9 +1180,15 @@ HTML_TEMPLATE = r"""
                             </div>
                         </div>
 
-                        <div class="mb-3">
-                            <label class="form-label text-secondary small fw-bold">SCHEDULED DATE</label>
-                            <input type="date" class="form-control bg-dark text-light border-secondary" id="edit-task-date">
+                        <div class="row g-2 mb-3">
+                            <div class="col-7">
+                                <label class="form-label text-secondary small fw-bold">SCHEDULED DATE</label>
+                                <input type="date" class="form-control bg-dark text-light border-secondary" id="edit-task-date">
+                            </div>
+                            <div class="col-5">
+                                <label class="form-label text-secondary small fw-bold">TIME (Optional)</label>
+                                <input type="text" class="form-control bg-dark text-light border-secondary" id="edit-task-time" placeholder="e.g. 18:00">
+                            </div>
                         </div>
 
                         <div class="mb-3">
@@ -1412,6 +1437,7 @@ PARTIAL_TEMPLATE = """
                                         data-title="{{ t.title|forceescape }}"
                                         data-symbol="{{ t.symbol }}"
                                         data-date="{{ t.parsed_date.strftime('%Y-%m-%d') if t.parsed_date else data.get('today_iso', '') }}"
+                                        data-time="{{ t.time or '' }}"
                                         data-tags="{{ t.tags|join(' ') }}"
                                         data-subtasks='{{ t.subtasks|tojson }}'
                                         class="btn btn-dark text-info border-info btn-edit-task"
@@ -1887,8 +1913,14 @@ def add_task():
 
     date_shorthand = f"{target_dt.month}/{target_dt.day}"
 
+    time_str = (req_data.get("time") or "").strip()
+
     formatted_tags = " ".join([f"#{t.strip('#')}" for t in tags if t.strip()])
-    parent_line = f"{symbol} {date_shorthand} {description}"
+    line_parts = [symbol, date_shorthand]
+    if time_str:
+        line_parts.append(time_str)
+    line_parts.append(description)
+    parent_line = " ".join(line_parts)
     if formatted_tags:
         parent_line += f" {formatted_tags}"
 
@@ -2138,8 +2170,14 @@ def edit_task():
 
     date_shorthand = f"{target_dt.month}/{target_dt.day}"
 
+    time_str = (req_data.get("time") or "").strip()
+
     formatted_tags = " ".join([f"#{t.strip('#')}" for t in tags if t.strip()])
-    new_parent_line = f"{symbol} {date_shorthand} {description}"
+    line_parts = [symbol, date_shorthand]
+    if time_str:
+        line_parts.append(time_str)
+    line_parts.append(description)
+    new_parent_line = " ".join(line_parts)
     if formatted_tags:
         new_parent_line += f" {formatted_tags}"
 

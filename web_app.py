@@ -886,6 +886,17 @@ HTML_TEMPLATE = r"""
         });
 
         document.addEventListener('click', function(e) {
+            if (e.target && (e.target.id === 'btn-add-subtask-field' || e.target.id === 'btn-add-edit-subtask-field')) {
+                const containerId = e.target.id === 'btn-add-subtask-field' ? 'subtasks-container' : 'edit-subtasks-container';
+                const container = document.getElementById(containerId);
+                if (container) {
+                    const newRow = createSubtaskInputRow();
+                    container.appendChild(newRow);
+                    newRow.querySelector('input').focus();
+                }
+                return;
+            }
+
             if (e.target && (e.target.id === 'btn-calc-steps-edit' || e.target.id === 'btn-calc-steps-add')) {
                 const isEdit = e.target.id === 'btn-calc-steps-edit';
                 const descEl = document.getElementById(isEdit ? 'edit-task-desc' : 'task-desc');
@@ -938,7 +949,6 @@ HTML_TEMPLATE = r"""
                 const subtasks = Array.from(subtaskInputs)
                     .map(input => input.value.trim())
                     .filter(val => val.length > 0);
-
                 fetch('/add_task', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1055,6 +1065,53 @@ HTML_TEMPLATE = r"""
                 </div>
                 <div class="modal-body">
                     <form id="create-task-form">
+                        <div class="mb-3">
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" role="switch" id="task-preserve-subtasks" checked>
+                                <label class="form-check-label text-secondary small fw-bold" for="task-preserve-subtasks">
+                                    Keep completed subtasks in # Done
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label text-secondary small fw-bold">SCHEDULED DATE</label>
+                            <input type="date" class="form-control bg-dark text-light border-secondary" id="task-date">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label text-secondary small fw-bold">TASK TYPE</label>
+                            <select class="form-select bg-dark text-light border-secondary" id="task-type">
+                                <option value="*" selected>* Fluid Task (Default)</option>
+                                <option value="!">! Strong Commitment</option>
+                                <option value="?">? Arbitrary / Optional</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label text-secondary small fw-bold">TASK DESCRIPTION</label>
+                            <input type="text" class="form-control bg-dark text-light border-secondary" id="task-desc" placeholder="e.g. Review pull request" required autocomplete="off">
+                        </div>
+
+                        <div class="row g-2 mb-3">
+                            <div class="col-8">
+                                <label class="form-label text-secondary small fw-bold">TAGS (Type or select historical)</label>
+                                <input type="text" class="form-control bg-dark text-light border-secondary" id="task-tags-input" list="historical-tags-list" placeholder="e.g. priority work">
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label text-secondary small fw-bold">FIB SCORE</label>
+                                <select class="form-select bg-dark text-light border-secondary" id="task-fib-score">
+                                    <option value="" selected>None</option>
+                                    <option value="1">1 pt</option>
+                                    <option value="2">2 pts</option>
+                                    <option value="3">3 pts</option>
+                                    <option value="5">5 pts</option>
+                                    <option value="8">8 pts</option>
+                                    <option value="13">13 pts</option>
+                                </select>
+                            </div>
+                        </div>
+
                         <div class="mb-3">
                             <label class="form-label text-secondary small fw-bold d-flex justify-content-between align-items-center">
                                 <span>SUBTASKS (Optional)</span>

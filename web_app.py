@@ -315,8 +315,9 @@ HTML_TEMPLATE = r"""
             const rollingInput = document.getElementById('rollingWeeksInput');
             const dailyWeeksBackInput = document.getElementById('dailyWeeksBackInput');
             const stepMonthsBackInput = document.getElementById('stepMonthsBackInput');
+            const waterMonthsBackInput = document.getElementById('waterMonthsBackInput');
             const statsModal = document.getElementById('statsModal');
-            let rawVelocityData = { weeks: [], points: [], daily_points: [], monthly_steps: [] };
+            let rawVelocityData = { weeks: [], points: [], daily_points: [], monthly_steps: [], monthly_water: [] };
 
             const SAVED_ROLLING_KEY = 'fib_velocity_rolling_weeks';
             const savedRolling = localStorage.getItem(SAVED_ROLLING_KEY);
@@ -342,6 +343,7 @@ HTML_TEMPLATE = r"""
             statsModal.addEventListener('show.bs.modal', function() {
                 dailyWeeksBackInput.value = 1;
                 if (stepMonthsBackInput) stepMonthsBackInput.value = 1;
+                if (waterMonthsBackInput) waterMonthsBackInput.value = 1;
                 fetch('/api/fib_velocity')
                     .then(res => res.json())
                     .then(data => {
@@ -351,9 +353,13 @@ HTML_TEMPLATE = r"""
                         if (stepMonthsBackInput) {
                             stepMonthsBackInput.max = Math.max((data.monthly_steps || []).length, 1);
                         }
+                        if (waterMonthsBackInput) {
+                            waterMonthsBackInput.max = Math.max((data.monthly_water || []).length, 1);
+                        }
                         renderVelocityChart();
                         renderDailyChart();
                         renderMonthlyStepRibbon();
+                        renderMonthlyWaterRibbon();
                     })
                     .catch(err => console.error('Error fetching velocity stats:', err));
             });
@@ -406,6 +412,33 @@ HTML_TEMPLATE = r"""
                 if (stepMonthLabel) stepMonthLabel.textContent = entry.label;
                 if (stepFractionText) stepFractionText.textContent = `${entry.yes_days} / ${entry.total_days} days`;
                 if (stepMonthlyPct) stepMonthlyPct.textContent = `${entry.percentage}%`;
+            }
+
+            function renderMonthlyWaterRibbon() {
+                const monthlyWater = rawVelocityData.monthly_water || [];
+                const waterMonthLabel = document.getElementById('waterMonthLabel');
+                const waterFractionText = document.getElementById('waterFractionText');
+                const waterMonthlyPct = document.getElementById('waterMonthlyPct');
+
+                if (monthlyWater.length === 0) {
+                    if (waterMonthLabel) waterMonthLabel.textContent = 'No closed months';
+                    if (waterFractionText) waterFractionText.textContent = '0 / 30 days';
+                    if (waterMonthlyPct) waterMonthlyPct.textContent = '0%';
+                    return;
+                }
+
+                const monthsBack = Math.min(Math.max(parseInt(waterMonthsBackInput.value) || 1, 1), monthlyWater.length);
+                waterMonthsBackInput.value = monthsBack;
+                const targetIdx = monthlyWater.length - monthsBack;
+                const entry = monthlyWater[targetIdx];
+
+                if (waterMonthLabel) waterMonthLabel.textContent = entry.label;
+                if (waterFractionText) waterFractionText.textContent = `${entry.yes_days} / ${entry.total_days} days`;
+                if (waterMonthlyPct) waterMonthlyPct.textContent = `${entry.percentage}%`;
+            }
+
+            if (waterMonthsBackInput) {
+                waterMonthsBackInput.addEventListener('change', renderMonthlyWaterRibbon);
             }
 
             if (stepMonthsBackInput) {
@@ -1270,6 +1303,20 @@ HTML_TEMPLATE = r"""
                             <span class="badge bg-info text-dark fw-bold fs-6" id="stepMonthlyPct">0%</span>
                         </div>
                     </div>
+                    <!-- Monthly Water Consistency Ribbon (Closed Months Only) -->
+                    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 px-3 py-2 rounded border border-primary-subtle gap-2" style="background-color: #162032;">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="fw-bold text-primary small text-uppercase">💧 Monthly Water Consistency</span>
+                            <span class="text-secondary">|</span>
+                            <label for="waterMonthsBackInput" class="form-label mb-0 small text-secondary fw-semibold">Months Back:</label>
+                            <input type="number" id="waterMonthsBackInput" class="form-control form-control-sm bg-dark text-primary border-secondary text-center fw-bold" style="width: 72px;" min="1" max="24" value="1">
+                            <span class="badge bg-dark border border-secondary text-light" id="waterMonthLabel">--</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-3">
+                            <span class="small text-muted" id="waterFractionText">0 / 30 days</span>
+                            <span class="badge bg-primary text-light fw-bold fs-6" id="waterMonthlyPct">0%</span>
+                        </div>
+                    </div>
 
                     <!-- Top Chart: Weekly Rolling Trend -->
                     <div class="d-flex justify-content-between align-items-center mb-2 bg-slate-800 p-2 rounded border border-secondary" style="background-color: #1e293b;">
@@ -1950,14 +1997,21 @@ def add_task():
 @app.route("/api/fib_velocity", methods=["GET"])
 def get_fib_velocity():
     if not TASK_FILE.exists():
-        return jsonify({"weeks": [], "points": [], "daily_points": [], "monthly_steps": []})
-
+        return jsonify({
+            "weeks": [],
+            "points": [],
+            "daily_points": [],
+            "monthly_steps": [],
+            "monthly_water": []
+        })
+    
     content = TASK_FILE.read_text()
     lines = content.splitlines()
 
     completed_fib_items = []
     all_completed_dates = []
     step_dates_by_month = {}
+    water_dates_by_month = {}
     in_done_section = False
 
     for line in lines:
@@ -1992,6 +2046,10 @@ def get_fib_velocity():
                 ym_key = (item_date.year, item_date.month)
                 step_dates_by_month.setdefault(ym_key, set()).add(item_date)
 
+            if 'drink water' in stripped.lower():
+                ym_key = (item_date.year, item_date.month)
+                water_dates_by_month.setdefault(ym_key, set()).add(item_date)
+
     now = datetime.now()
     current_ym = (now.year, now.month)
     monthly_steps = []
@@ -2008,10 +2066,30 @@ def get_fib_velocity():
             "total_days": days_in_month,
             "percentage": pct
         })
+    monthly_water = []
+    for (yr, mo) in sorted(water_dates_by_month.keys()):
+        if (yr, mo) >= current_ym:
+            continue
+        days_in_month = calendar.monthrange(yr, mo)[1]
+        yes_days = len(water_dates_by_month[(yr, mo)])
+        pct = round((yes_days / days_in_month) * 100, 1)
+        monthly_water.append({
+            "month": f"{yr}-{mo:02d}",
+            "label": datetime(yr, mo, 1).strftime("%b %Y"),
+            "yes_days": yes_days,
+            "total_days": days_in_month,
+            "percentage": pct
+        })
 
     if not all_completed_dates:
-        return jsonify({"weeks": [], "points": [], "daily_points": [], "monthly_steps": monthly_steps})
-
+        return jsonify({
+            "weeks": [],
+            "points": [],
+            "daily_points": [],
+            "monthly_steps": monthly_steps,
+            "monthly_water": monthly_water
+        })
+    
     today = datetime.now().date()
     days_since_sunday = (today.weekday() + 1) % 7
     last_closed_sunday = today - timedelta(days=days_since_sunday)
@@ -2052,7 +2130,8 @@ def get_fib_velocity():
         "weeks": labels,
         "points": values,
         "daily_points": daily_values,
-        "monthly_steps": monthly_steps
+        "monthly_steps": monthly_steps,
+        "monthly_water": monthly_water
     })
 
 @app.route("/complete_task", methods=["POST"])

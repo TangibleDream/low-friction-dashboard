@@ -873,6 +873,7 @@ HTML_TEMPLATE = r"""
                 const tagsList = (editBtn.getAttribute('data-tags') || '').split(/\s+/);
                 
                 const fibTag = tagsList.find(t => t.toLowerCase().startsWith('fib:'));
+
                 if (editFibEl) {
                     editFibEl.value = fibTag ? fibTag.split(':')[1] : '';
                 }
@@ -890,9 +891,8 @@ HTML_TEMPLATE = r"""
                 dateEl.value = editBtn.getAttribute('data-date') || '';
                 if (timeEl) {
                     const rawTimeAttr = (editBtn.getAttribute('data-time') || '').trim();
-                    // Strip leading M/D date prefix (e.g. "11/17 18:00" -> "18:00") or "Flexible"
                     const cleanedTime = rawTimeAttr
-                        .replace(/^\d{1,2}\/\d{1,2}\s*/, '')
+                        .replace(/^\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\s*/, '')
                         .replace(/^Flexible$/i, '')
                         .trim();
                     timeEl.value = cleanedTime;
@@ -1958,7 +1958,11 @@ def add_task():
     else:
         target_dt = datetime.now()
 
-    date_shorthand = f"{target_dt.month}/{target_dt.day}"
+    now = datetime.now()
+    if target_dt.year != now.year:
+        date_shorthand = f"{target_dt.month}/{target_dt.day}/{target_dt.strftime('%y')}"
+    else:
+        date_shorthand = f"{target_dt.month}/{target_dt.day}"
 
     time_str = (req_data.get("time") or "").strip()
 
@@ -2247,7 +2251,11 @@ def edit_task():
     else:
         target_dt = datetime.now()
 
-    date_shorthand = f"{target_dt.month}/{target_dt.day}"
+    now = datetime.now()
+    if target_dt.year != now.year:
+        date_shorthand = f"{target_dt.month}/{target_dt.day}/{target_dt.strftime('%y')}"
+    else:
+        date_shorthand = f"{target_dt.month}/{target_dt.day}"
 
     time_str = (req_data.get("time") or "").strip()
 

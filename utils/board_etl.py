@@ -267,13 +267,18 @@ def parse_date(content_str):
     if not content_str:
         return None
     
-    match = re.search(r'(?<!\d:)\b(\d{1,2}/\d{1,2})\b(?!\:\d{2})', content_str)
+    match = re.search(r'(?<!\d:)\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b(?!\:\d{2})', content_str)
     if match:
-        month, day = map(int, match.group(1).split('/'))
+        month = int(match.group(1))
+        day = int(match.group(2))
+        year_str = match.group(3)
         now = datetime.now()
-        target_year = now.year
-        if now.month == 12 and month == 1:
-            target_year += 1
+        if year_str:
+            target_year = 2000 + int(year_str) if len(year_str) == 2 else int(year_str)
+        else:
+            target_year = now.year
+            if now.month == 12 and month == 1:
+                target_year += 1
         try:
             return datetime(target_year, month, day)
         except ValueError:
@@ -381,12 +386,12 @@ def parse_tasks(file_path: str):
             parsed_dt = parse_date(content)
 
             time_match = re.search(
-                r'\b((?:\d{1,2}/\d{1,2}\s+)?\d{1,2}:\d{2}(?:\s*-\s*\d{1,2}:\d{2})?)\b', 
+                r'\b((?:\d{1,2}/\d{1,2}(?:/\d{2,4})?\s+)?\d{1,2}:\d{2}(?:\s*-\s*\d{1,2}:\d{2})?)\b', 
                 content
             )
             time_str = time_match.group(1) if time_match else None
             
-            date_match = re.search(r'(?<!\d:)\b(\d{1,2}/\d{1,2})\b(?!\:\d{2})', content)
+            date_match = re.search(r'\b(\d{1,2}/\d{1,2}(?:/\d{2,4})?)\b', content)
             date_str = date_match.group(1) if date_match else None
 
             contexts = re.findall(r'@([\w-]+)', content)

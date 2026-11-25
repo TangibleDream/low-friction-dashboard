@@ -1154,6 +1154,7 @@ HTML_TEMPLATE = r"""
                                 <label class="form-label text-secondary small fw-bold">FIB SCORE</label>
                                 <select class="form-select bg-dark text-light border-secondary" id="task-fib-score">
                                     <option value="" selected>None</option>
+                                    <option value="0">0 pts</option>
                                     <option value="1">1 pt</option>
                                     <option value="2">2 pts</option>
                                     <option value="3">3 pts</option>
@@ -1248,6 +1249,7 @@ HTML_TEMPLATE = r"""
                                     <label class="form-label text-secondary small fw-bold">FIB SCORE</label>
                                     <select class="form-select bg-dark text-light border-secondary" id="edit-task-fib-score">
                                         <option value="" selected>None</option>
+                                        <option value="0">0 pts</option>
                                         <option value="1">1 pt</option>
                                         <option value="2">2 pts</option>
                                         <option value="3">3 pts</option>
@@ -1803,7 +1805,7 @@ PARTIAL_TEMPLATE = """
             <ul class="list-group list-group-flush">
                 {% set quick_count = namespace(value=0) %}
                 {% for t in data.today %}
-                    {% if 'quick' in t.tags or 'low_energy' in t.tags %}
+                    {% if 'quick' in t.tags or 'low_energy' in t.tags or t.fib_score == '0' %}
                         {% set quick_count.value = quick_count.value + 1 %}
                         <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center gap-2">
                             <span class="text-break">{{ t.title | render_links | safe }}</span>

@@ -580,7 +580,10 @@ def render_dashboard(data):
         elif t['symbol'] == '*':
             timeline_table.add_row("[cyan]FLUID[/cyan]", t['time'] or "Flexible", ctx_str, task_display)
 
-    quick_tasks = [f"• {t['title']}" for t in tasks if 'quick' in t['tags'] or 'low_energy' in t['tags']]
+    quick_tasks = [
+        f"• {t['title']}" for t in tasks
+        if 'quick' in t['tags'] or 'low_energy' in t['tags'] or t.get('fib_score') == '0'
+    ]
     waiting_tasks = [
         f"• {t['title']} [dim]({' '.join(f'#{tag}' for tag in t['tags'])})[/dim]"
         for t in tasks if any(tag == 'wait' or tag.startswith('wait:') for tag in t['tags'])

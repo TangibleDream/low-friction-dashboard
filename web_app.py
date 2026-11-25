@@ -1860,19 +1860,51 @@ PARTIAL_TEMPLATE = """
 {% if data.completed %}
 <div class="card border-secondary">
     <div class="card-header bg-dark text-muted d-flex justify-content-between align-items-center">
-        <span>Completed Tasks</span>
+        <span>📅 Completed History ({{ data.completed|length }} Total)</span>
         <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#completedCollapse">
-            View {{ data.completed|length }} Completed Items
+            Toggle Archive
         </button>
     </div>
-    <div class="collapse" id="completedCollapse">
-        <ul class="list-group list-group-flush">
-            {% for item in data.completed %}
-                <li class="list-group-item bg-transparent text-muted text-decoration-line-through border-secondary small">
-                    ✓ {{ item }}
-                </li>
+    <div class="collapse show" id="completedCollapse">
+        <div class="accordion accordion-flush" id="completedMonthsAccordion">
+            {% for month in data.get('completed_calendar', []) %}
+                <div class="accordion-item bg-transparent border-secondary">
+                    <h2 class="accordion-header" id="heading-{{ month.month_key }}">
+                        <button class="accordion-button collapsed bg-dark text-light py-2 px-3 shadow-none"
+                                type="button"
+                                data-bs-toggle="collapse"
+                                data-bs-target="#collapse-{{ month.month_key }}"
+                                aria-expanded="false"
+                                aria-controls="collapse-{{ month.month_key }}">
+                            <span class="fw-semibold text-info me-2">{{ month.short_label }}</span>
+                            <span class="badge bg-secondary rounded-pill">{{ month.count }}</span>
+                            <span class="ms-auto small text-muted me-2">{{ month.label }}</span>
+                        </button>
+                    </h2>
+                    <div id="collapse-{{ month.month_key }}"
+                         class="accordion-collapse collapse"
+                         aria-labelledby="heading-{{ month.month_key }}">
+                        <div class="accordion-body p-0">
+                            {% for day in month.days %}
+                                <div class="border-top border-secondary px-3 py-2">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <span class="small fw-bold text-secondary text-uppercase">{{ day.label }}</span>
+                                        <span class="badge bg-dark border border-secondary text-muted">{{ day.tasks|length }}</span>
+                                    </div>
+                                    <ul class="list-unstyled mb-0 ms-2">
+                                        {% for item in day.tasks %}
+                                            <li class="text-muted text-decoration-line-through small py-1 border-bottom border-secondary-subtle">
+                                                ✓ {{ item | render_links | safe }}
+                                            </li>
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
             {% endfor %}
-        </ul>
+        </div>
     </div>
 </div>
 {% endif %}

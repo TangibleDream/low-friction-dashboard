@@ -314,6 +314,8 @@ def parse_tasks(file_path: str):
     today_tasks = []
     future_tasks = []
     completed_tasks = []
+    completed_by_date = {}
+    last_seen_done_date = None
     today_fib_completed = 0.0
     today_fib_remaining = 0.0
     today_date = datetime.now().date()
@@ -350,6 +352,21 @@ def parse_tasks(file_path: str):
                 clean_done = re.sub(r'^\*\s*', '', clean_done)
                 if clean_done:
                     completed_tasks.append(clean_done)
+
+                    # Bucket completed item by calendar date, inheriting last seen date for undated subtasks
+                    done_dt = parse_date(clean_done)
+                    if done_dt:
+                        done_date = done_dt.date()
+                        if not re.search(r'\b\d{1,2}/\d{1,2}/\d{2,4}\b', clean_done) and done_date > today_date:
+                            try:
+                                done_date = done_date.replace(year=done_date.year - 1)
+                            except ValueError:
+                                done_date = today_date
+                        last_seen_done_date = done_date
+                    else:
+                        done_date = last_seen_done_date if last_seen_done_date is not None else today_date
+
+                    completed_by_date.setdefault(done_date, []).append(clean_done)
                     
                     # Track completed fibonacci points for today
                     done_fib_match = re.search(r'#fib:(\d+(?:\.\d+)?)', clean_done, re.IGNORECASE)
@@ -468,11 +485,32 @@ def parse_tasks(file_path: str):
             t_lower = t.lower()
             if t_lower not in ('focus', 'priority', 'preserve_subtasks', 'keep_subtasks') and not t_lower.startswith(('fib:', 'ord:')):
                 all_tags.add(t)
+    months_map = {}
+    for d in sorted(completed_by_date.keys(), reverse=True):
+        ym_key = (d.year, d.month)
+        if ym_key not in months_map:
+            months_map[ym_key] = {
+                "month_key": f"{d.year}-{d.month:02d}",
+                "label": d.strftime("%B %Y"),
+                "short_label": d.strftime("%B"),
+                "count": 0,
+                "days": []
+            }
+        items = list(reversed(completed_by_date[d]))  # Most recently completed on that day first
+        months_map[ym_key]["count"] += len(items)
+        months_map[ym_key]["days"].append({
+            "date_iso": d.strftime("%Y-%m-%d"),
+            "label": "Today" if d == today_date else ("Yesterday" if d == today_date - timedelta(days=1) else d.strftime("%a, %b %d")),
+            "tasks": items
+        })
+
+    completed_calendar = [months_map[k] for k in sorted(months_map.keys(), reverse=True)]
 
     return {
         "today": today_tasks,
         "future": future_tasks,
         "completed": completed_tasks,
+        "completed_calendar": completed_calendar,
         "all_tags": sorted(list(all_tags)),
         "obsidian_links": sorted(list(obsidian_link_history)),
         "today_fib_completed": int(today_fib_completed) if today_fib_completed.is_integer() else today_fib_completed,

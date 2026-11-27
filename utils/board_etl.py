@@ -267,7 +267,7 @@ def parse_date(content_str):
     if not content_str:
         return None
     
-    match = re.search(r'(?<!\d:)\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b(?!\:\d{2})', content_str)
+    match = re.search(r'(?<!\d:)(?<!\d\s)\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?(?=$|\s|[,;)])', content_str)
     if match:
         month = int(match.group(1))
         day = int(match.group(2))
@@ -351,13 +351,16 @@ def parse_tasks(file_path: str):
                 clean_done = re.sub(r'^(?:x\s*)+', '', stripped)
                 clean_done = re.sub(r'^\*\s*', '', clean_done)
                 if clean_done:
+                    # Strip leading checkmark if preserved subtask was saved with ✓
+                    clean_done = re.sub(r'^✓\s*', '', clean_done)
                     completed_tasks.append(clean_done)
 
-                    # Bucket completed item by calendar date, inheriting last seen date for undated subtasks
-                    done_dt = parse_date(clean_done)
+                    # Only extract a completion date if it appears at the start of the entry
+                    leading_date_match = re.match(r'^(?:[!*?]\s*)?(\d{1,2}/\d{1,2}(?:/\d{2,4})?)(?=$|\s)', clean_done)
+                    done_dt = parse_date(leading_date_match.group(1)) if leading_date_match else None
                     if done_dt:
                         done_date = done_dt.date()
-                        if not re.search(r'\b\d{1,2}/\d{1,2}/\d{2,4}\b', clean_done) and done_date > today_date:
+                        if not re.search(r'\b\d{1,2}/\d{1,2}/\d{2,4}\b', leading_date_match.group(1)) and done_date > today_date:
                             try:
                                 done_date = done_date.replace(year=done_date.year - 1)
                             except ValueError:
